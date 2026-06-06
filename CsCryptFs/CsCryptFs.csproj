@@ -6,7 +6,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="CsCryptFs.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
     <PackageReference Include="FileAbstractions" Version="0.2.0" />
-    <PackageReference Include="Scrypt.NET" Version="1.3.0" />
   </ItemGroup>
 </Project>
