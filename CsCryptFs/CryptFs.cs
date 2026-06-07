@@ -16,10 +16,11 @@ public class CryptFs : IVirtualDirectory
 {
     private const string CONFIG_FILE_NAME = "gocryptfs.conf";
 
-    private CryptFsConfigWithSecret Config { get; }
+    public CryptFsConfigWithKeys Config { get; }
+
     private readonly IVirtualDirectory inner;
 
-    private CryptFs(CryptFsConfigWithSecret config, IVirtualDirectory inner)
+    private CryptFs(CryptFsConfigWithKeys config, IVirtualDirectory inner)
     {
         Config = config;
         this.inner = inner;
@@ -30,35 +31,35 @@ public class CryptFs : IVirtualDirectory
     /// The directory must be empty.
     /// </summary>
     /// <param name="inner">The inner directory to wrap.</param>
-    /// <param name="password">The password to use for encrypting/decrypting the files. Exactly one of this or <paramref name="masterKey"/> must be non-null.</param>
-    /// <param name="masterKey">The key derived from <paramref name="password"/>. Exactly one of this or <paramref name="password"/> must be non-null.</param>
+    /// <param name="password">The password to use for encrypting/decrypting the files. Exactly one of this or <paramref name="kek"/> must be non-null.</param>
+    /// <param name="kek">The key derived from <paramref name="password"/>. Exactly one of this or <paramref name="password"/> must be non-null.</param>
     /// <param name="cancellationToken"></param>
     /// <exception cref="InvalidOperationException"></exception>
     public static async Task<CryptFs> CreateNewAsync(
         IVirtualDirectory inner,
         string? password = null,
-        byte[]? masterKey = null,
+        byte[]? kek = null,
         CancellationToken cancellationToken = default
     )
     {
-        if (password == null && masterKey == null)
+        if (password == null && kek == null)
         {
             throw new ArgumentException("No password nor key were given.", nameof(password));
         }
-        if (password != null && masterKey != null)
+        if (password != null && kek != null)
         {
-            throw new ArgumentException("Both a password and a key were given.", nameof(masterKey));
+            throw new ArgumentException("Both a password and a key were given.", nameof(kek));
         }
         CryptFsConfig.ScryptParams scryptParams = ScryptUtil.GenerateSecureParams();
-        if (masterKey == null)
+        if (kek == null)
         {
-            masterKey = await ScryptUtil.DeriveKeyAsync(password!, scryptParams).ConfigureAwait(false);
+            kek = await ScryptUtil.DeriveKeyAsync(password!, scryptParams).ConfigureAwait(false);
         }
-        byte[] fsKey = RandomNumberGenerator.GetBytes(32);
+        byte[] masterKey = RandomNumberGenerator.GetBytes(32);
         CryptFsConfig config = new()
         {
             Creator = "CsCryptFs " + typeof(CryptFs).Assembly.GetName().Version?.ToString(),
-            EncryptedKey = FsKeyCrypto.EncryptFsKey(fsKey, masterKey),
+            EncryptedKey = EncryptionKeysCrypto.EncryptKey(kek, masterKey),
             ScryptObject = scryptParams,
             Version = CryptFsConfig.SUPPORTED_CONFIG_VERSION,
             FeatureFlags = CryptFsConfig.ExpectedFeatureFlags,
@@ -75,7 +76,7 @@ public class CryptFs : IVirtualDirectory
             .OpenWriteAsync(FileMode.CreateNew, cancellationToken)
             .ConfigureAwait(false);
         await writeStream.WriteAsync(config.Serialize(), cancellationToken).ConfigureAwait(false);
-        return new CryptFs(new CryptFsConfigWithSecret(config, masterKey, fsKey), inner);
+        return new CryptFs(CryptFsConfigWithKeys.Derive(config, kek, masterKey), inner);
     }
 
     /// <summary>
@@ -83,8 +84,8 @@ public class CryptFs : IVirtualDirectory
     /// </summary>
     /// <param name="inner">The inner directory to wrap.</param>
     /// <param name="cancellationToken">Optionally, a cancellation token.</param>
-    /// <param name="password">The password to use for encrypting/decrypting the files. Exactly one of this or <paramref name="masterKey"/> must be non-null.</param>
-    /// <param name="masterKey">The key derived from <paramref name="password"/>. Exactly one of this or <paramref name="password"/> must be non-null.</param>
+    /// <param name="password">The password to use for encrypting/decrypting the files. Exactly one of this or <paramref name="kek"/> must be non-null.</param>
+    /// <param name="kek">The key derived from <paramref name="password"/>. Exactly one of this or <paramref name="password"/> must be non-null.</param>
     /// <returns>A new <see cref="CryptFs"/> instance over the given directory.</returns>
     /// <exception cref="ArgumentException"/>
     /// <exception cref="InvalidOperationException"/>
@@ -93,17 +94,17 @@ public class CryptFs : IVirtualDirectory
     public static async Task<CryptFs> OpenExistingAsync(
         IVirtualDirectory inner,
         string? password = null,
-        byte[]? masterKey = null,
+        byte[]? kek = null,
         CancellationToken cancellationToken = default
     )
     {
-        if (password == null && masterKey == null)
+        if (password == null && kek == null)
         {
             throw new ArgumentException("No password nor key were given.", nameof(password));
         }
-        if (password != null && masterKey != null)
+        if (password != null && kek != null)
         {
-            throw new ArgumentException("Both a password and a key were given.", nameof(masterKey));
+            throw new ArgumentException("Both a password and a key were given.", nameof(kek));
         }
         IVirtualFile configFile = inner.GetChildFile(CONFIG_FILE_NAME);
         if (configFile is not IReadable readable)
@@ -138,19 +139,18 @@ public class CryptFs : IVirtualDirectory
         }
         if (
             config.FeatureFlags == null
-            || new HashSet<string>(config.FeatureFlags).SetEquals(
+            || !new HashSet<string>(config.FeatureFlags).SetEquals(
                 new HashSet<string>(CryptFsConfig.ExpectedFeatureFlags)
             )
         )
         {
             throw new InvalidDataException("Unexpected feature flags");
         }
-        if (masterKey == null)
+        if (kek == null)
         {
-            masterKey = await ScryptUtil.DeriveKeyAsync(password!, config.ScryptObject).ConfigureAwait(false);
+            kek = await ScryptUtil.DeriveKeyAsync(password!, config.ScryptObject).ConfigureAwait(false);
         }
-        byte[] fsKey = FsKeyCrypto.DecryptFsKey(config.EncryptedKey, masterKey);
-        return new CryptFs(new CryptFsConfigWithSecret(config, masterKey, fsKey), inner);
+        return new CryptFs(CryptFsConfigWithKeys.Derive(config, kek), inner);
     }
 
     public IVirtualDirectory GetDescendantDirectory(ReadOnlySpan<char> relativePath)
