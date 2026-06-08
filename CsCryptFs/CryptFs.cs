@@ -30,25 +30,15 @@ public class CryptFs : IVirtualDirectory
     /// The directory must be empty.
     /// </summary>
     /// <param name="inner">The inner directory to wrap.</param>
-    /// <param name="password">The password to use for encrypting/decrypting the files. Exactly one of this or <paramref name="kek"/> must be non-null.</param>
-    /// <param name="kek">The key derived from <paramref name="password"/>. Exactly one of this or <paramref name="password"/> must be non-null.</param>
+    /// <param name="config">The configuration and keys to use.</param>
     /// <param name="cancellationToken"></param>
     /// <exception cref="InvalidOperationException"></exception>
     public static async Task<CryptFs> CreateNewAsync(
         IVirtualDirectory inner,
-        string? password = null,
-        byte[]? kek = null,
+        CryptFsConfigWithKeys config,
         CancellationToken cancellationToken = default
     )
     {
-        if (password == null && kek == null)
-        {
-            throw new ArgumentException("No password nor key were given.", nameof(password));
-        }
-        if (password != null && kek != null)
-        {
-            throw new ArgumentException("Both a password and a key were given.", nameof(kek));
-        }
         if (inner.GetChildFile(CONFIG_FILE_NAME) is not IWritable writable)
         {
             throw new InvalidOperationException($"Config file {CONFIG_FILE_NAME} is not writable");
@@ -57,20 +47,11 @@ public class CryptFs : IVirtualDirectory
         {
             throw new InvalidOperationException("Refusing to initialize cryptfs in a non-empty directory");
         }
-        CryptFsConfigWithKeys configWithKeys;
-        if (password != null)
-        {
-            configWithKeys = await CryptFsConfigWithKeys.CreateNewAsync(password).ConfigureAwait(false);
-        }
-        else
-        {
-            configWithKeys = CryptFsConfigWithKeys.CreateNew(kek!);
-        }
         await using Stream writeStream = await writable
             .OpenWriteAsync(FileMode.CreateNew, cancellationToken)
             .ConfigureAwait(false);
-        await writeStream.WriteAsync(configWithKeys.Config.Serialize(), cancellationToken).ConfigureAwait(false);
-        return new CryptFs(configWithKeys, inner);
+        await writeStream.WriteAsync(config.Config.Serialize(), cancellationToken).ConfigureAwait(false);
+        return new CryptFs(config, inner);
     }
 
     /// <summary>
