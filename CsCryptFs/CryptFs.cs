@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using FileAbstractions;
@@ -50,33 +49,28 @@ public class CryptFs : IVirtualDirectory
         {
             throw new ArgumentException("Both a password and a key were given.", nameof(kek));
         }
-        CryptFsConfig.ScryptParams scryptParams = ScryptUtil.GenerateSecureParams();
-        if (kek == null)
-        {
-            kek = await ScryptUtil.DeriveKeyAsync(password!, scryptParams).ConfigureAwait(false);
-        }
-        byte[] masterKey = RandomNumberGenerator.GetBytes(32);
-        CryptFsConfig config = new()
-        {
-            Creator = "CsCryptFs " + typeof(CryptFs).Assembly.GetName().Version?.ToString(),
-            EncryptedKey = EncryptionKeysCrypto.EncryptKey(kek, masterKey),
-            ScryptObject = scryptParams,
-            Version = CryptFsConfig.SUPPORTED_CONFIG_VERSION,
-            FeatureFlags = CryptFsConfig.ExpectedFeatureFlags,
-        };
-        if (await inner.ListChildren(cancellationToken).AnyAsync(cancellationToken))
-        {
-            throw new InvalidOperationException("Refusing to initialize cryptfs in a non-empty directory");
-        }
         if (inner.GetChildFile(CONFIG_FILE_NAME) is not IWritable writable)
         {
             throw new InvalidOperationException($"Config file {CONFIG_FILE_NAME} is not writable");
         }
+        if (await inner.ListChildren(cancellationToken).AnyAsync(cancellationToken))
+        {
+            throw new InvalidOperationException("Refusing to initialize cryptfs in a non-empty directory");
+        }
+        CryptFsConfigWithKeys configWithKeys;
+        if (password != null)
+        {
+            configWithKeys = await CryptFsConfigWithKeys.CreateNewAsync(password).ConfigureAwait(false);
+        }
+        else
+        {
+            configWithKeys = CryptFsConfigWithKeys.CreateNew(kek!);
+        }
         await using Stream writeStream = await writable
             .OpenWriteAsync(FileMode.CreateNew, cancellationToken)
             .ConfigureAwait(false);
-        await writeStream.WriteAsync(config.Serialize(), cancellationToken).ConfigureAwait(false);
-        return new CryptFs(CryptFsConfigWithKeys.Derive(config, kek, masterKey), inner);
+        await writeStream.WriteAsync(configWithKeys.Config.Serialize(), cancellationToken).ConfigureAwait(false);
+        return new CryptFs(configWithKeys, inner);
     }
 
     /// <summary>
@@ -123,34 +117,22 @@ public class CryptFs : IVirtualDirectory
             {
                 throw new InvalidOperationException();
             }
-            config =
-                CryptFsConfig.Deserialize(buffer)
-                ?? throw new InvalidDataException($"{CONFIG_FILE_NAME} JSON root was literally null");
+            config = CryptFsConfig.DeserializeAndValidate(buffer);
         }
         catch (FileNotFoundException ex)
         {
             throw new InvalidOperationException($"Config file {CONFIG_FILE_NAME} does not exist", ex);
         }
-        if (config.Version != CryptFsConfig.SUPPORTED_CONFIG_VERSION)
+        CryptFsConfigWithKeys configWithKeys;
+        if (kek != null)
         {
-            throw new InvalidDataException(
-                $"Config file version {config.Version} is not supported (expected {CryptFsConfig.SUPPORTED_CONFIG_VERSION})"
-            );
+            configWithKeys = CryptFsConfigWithKeys.Load(config, kek);
         }
-        if (
-            config.FeatureFlags == null
-            || !new HashSet<string>(config.FeatureFlags).SetEquals(
-                new HashSet<string>(CryptFsConfig.ExpectedFeatureFlags)
-            )
-        )
+        else
         {
-            throw new InvalidDataException("Unexpected feature flags");
+            configWithKeys = await CryptFsConfigWithKeys.LoadAsync(config, password!).ConfigureAwait(false);
         }
-        if (kek == null)
-        {
-            kek = await ScryptUtil.DeriveKeyAsync(password!, config.ScryptObject).ConfigureAwait(false);
-        }
-        return new CryptFs(CryptFsConfigWithKeys.Derive(config, kek), inner);
+        return new CryptFs(configWithKeys, inner);
     }
 
     public IVirtualDirectory GetDescendantDirectory(ReadOnlySpan<char> relativePath)

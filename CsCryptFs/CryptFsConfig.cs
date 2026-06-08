@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -55,6 +56,28 @@ public class CryptFsConfig
         {
             return HashCode.Combine(N, R, P, KeyLen);
         }
+    }
+
+    /// <exception cref="InvalidDataException"></exception>
+    /// <exception cref="JsonException"></exception>
+    public static CryptFsConfig DeserializeAndValidate(ReadOnlySpan<byte> utf8Json)
+    {
+        CryptFsConfig? config =
+            Deserialize(utf8Json) ?? throw new InvalidDataException("Config file JSON contents were literally 'null'");
+        if (config.Version != SUPPORTED_CONFIG_VERSION)
+        {
+            throw new InvalidDataException(
+                $"Config file version {config.Version} is not supported (expected {SUPPORTED_CONFIG_VERSION})"
+            );
+        }
+        if (
+            config.FeatureFlags == null
+            || !new HashSet<string>(config.FeatureFlags).SetEquals(new HashSet<string>(ExpectedFeatureFlags))
+        )
+        {
+            throw new InvalidDataException("Unexpected feature flags");
+        }
+        return config;
     }
 
     public static CryptFsConfig? Deserialize(ReadOnlySpan<byte> utf8Json)
