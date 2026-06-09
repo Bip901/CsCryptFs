@@ -122,6 +122,7 @@ public class CryptFs : IVirtualDirectory
 
     public IVirtualDirectory GetDescendantDirectory(ReadOnlySpan<char> relativePath)
     {
+        throw new NotImplementedException(); // TODO
         return new CryptFs(Config, inner.GetDescendantDirectory(relativePath));
     }
 
@@ -154,25 +155,9 @@ public class CryptFs : IVirtualDirectory
             {
                 continue;
             }
-            string encryptedFileName;
-            if (fileEntry.Name.StartsWith(LONGNAME_FILE_PREFIX))
-            {
-                string nameFileName = fileEntry.Name + LONGNAME_NAME_FILE_SUFFIX;
-                if (inner.GetChildFile(nameFileName) is not IReadable readable)
-                {
-                    throw new InvalidOperationException($"File {nameFileName} is not readable!");
-                }
-                await using Stream stream = await readable
-                    .OpenReadAsync(FileMode.Open, cancellationToken)
-                    .ConfigureAwait(false);
-                using StreamReader streamReader = new(stream, Encoding.UTF8, leaveOpen: true);
-                encryptedFileName = await streamReader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                encryptedFileName = fileEntry.Name;
-            }
-            string decryptedFileName = fileNameCrypto.Decrypt(encryptedFileName);
+            string fullEncryptedFileName = await GetFullEncryptedNameAsync(inner, fileEntry.Name, cancellationToken)
+                .ConfigureAwait(false);
+            string decryptedFileName = fileNameCrypto.Decrypt(fullEncryptedFileName);
             yield return new FileEntry(decryptedFileName, fileEntry.Attributes);
         }
     }
@@ -192,14 +177,9 @@ public class CryptFs : IVirtualDirectory
         throw new NotImplementedException(); // TODO
     }
 
-    public IVirtualFileOrDirectory GetExistingChild(ReadOnlySpan<char> name)
-    {
-        throw new NotSupportedException();
-    }
-
     public Task RenameAsync(string newName, bool allowOverwrite, CancellationToken cancellationToken)
     {
-        throw new NotSupportedException();
+        throw new NotImplementedException(); // TODO
     }
 
     public Task MoveToAsync(
@@ -208,6 +188,33 @@ public class CryptFs : IVirtualDirectory
         bool allowOverwrite,
         CancellationToken cancellationToken
     )
+    {
+        throw new NotImplementedException(); // TODO
+    }
+
+    private static async Task<string> GetFullEncryptedNameAsync(
+        IVirtualDirectory parent,
+        string encryptedName,
+        CancellationToken cancellationToken
+    )
+    {
+        if (!encryptedName.StartsWith(LONGNAME_FILE_PREFIX))
+        {
+            return encryptedName;
+        }
+        string nameFileName = encryptedName + LONGNAME_NAME_FILE_SUFFIX;
+        if (parent.GetChildFile(nameFileName) is not IReadable readable)
+        {
+            throw new InvalidOperationException($"File {nameFileName} is not readable!");
+        }
+        await using Stream stream = await readable
+            .OpenReadAsync(FileMode.Open, cancellationToken)
+            .ConfigureAwait(false);
+        using StreamReader streamReader = new(stream, Encoding.UTF8, leaveOpen: true);
+        return await streamReader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public IVirtualFileOrDirectory GetExistingChild(ReadOnlySpan<char> name)
     {
         throw new NotSupportedException();
     }
