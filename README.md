@@ -1,12 +1,12 @@
 # CsCryptFs
 
-CsCryptFs is a partial[^1] C# reimplementation of [gocryptfs](https://github.com/rfjakob/gocryptfs) as a **shared library**, based on [the gocryptfs specification](https://nuetzlich.net/gocryptfs/forward_mode_crypto/).
+CsCryptFs is a C# implementation of the [gocryptfs](https://github.com/rfjakob/gocryptfs) filesystem format as a **shared library**, based on [the gocryptfs specification](https://nuetzlich.net/gocryptfs/forward_mode_crypto/).
 
-[^1]: Not all features are supported, but those that are, are fully compatible with gocryptfs.
+Not all features are supported, but the supported features are fully compatible with gocryptfs.
 
 ## Design
 
+- Unlike gocryptfs, CsCryptFs is **not** coupled to the local filesystem. Instead, the API receives a directory abstraction object from the caller.
 - CsCryptFs does not create any mounts, but is rather used by other C# code to read and write individual files and directories on demand.
-- CsCryptFs always assumes `--deterministicnames`: `gocryptfs.diriv` files are not supported.
-- Unlike gocryptfs, CsCryptFs is **not** coupled to the local filesystem. Instead, the API receives a directory abstraction object from the caller that allows dirlisting (this is needed to read `.longname` files) and opening files for reading/writing.
-
+- CsCryptFs always assumes `--deterministicnames`: `gocryptfs.diriv` files are not (currently) supported.
+  - One day I might implement `diriv`, but currently, reading the `diriv` adds a non-negligible round-trip to every directory listing operation in network filesystems, so it's not necessary for my use case.
