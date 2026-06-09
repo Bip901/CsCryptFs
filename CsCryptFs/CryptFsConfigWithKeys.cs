@@ -48,7 +48,7 @@ public record CryptFsConfigWithKeys(
 
     public static CryptFsConfigWithKeys Load(CryptFsConfig config, byte[] keyEncryptionKey)
     {
-        byte[] masterKey = EncryptionKeysCrypto.DecryptKey(config.EncryptedKey, keyEncryptionKey);
+        byte[] masterKey = EncryptionKeysCrypto.DecryptKey(keyEncryptionKey, config.EncryptedKey);
         return Load(config, keyEncryptionKey, masterKey);
     }
 
