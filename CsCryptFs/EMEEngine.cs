@@ -1,10 +1,14 @@
-// Ported from https://github.com/alexey-lapin/eme-java/blob/master/src/main/java/com/github/alexeylapin/eme/EMEImpl.java
 using System;
 using System.Security.Cryptography;
 
 namespace CsCryptFs;
 
-internal sealed class EMEEngine : IDisposable
+/// <summary>
+/// Implementation of AES-EME as described in https://eprint.iacr.org/2003/147.pdf .<br/>
+/// See also: <seealso href="https://github.com/rfjakob/eme">EME For Go</seealso>,
+/// <seealso href="https://github.com/alexey-lapin/eme-java/blob/master/src/main/java/com/github/alexeylapin/eme/EMEImpl.java">eme-java</seealso> (used as a reference implementation)
+/// </summary>
+public sealed class EMEEngine : IDisposable
 {
     private readonly Aes aes;
 
