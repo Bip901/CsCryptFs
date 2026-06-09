@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FileAbstractions;
@@ -14,6 +16,8 @@ namespace CsCryptFs;
 public class CryptFs : IVirtualDirectory
 {
     private const string CONFIG_FILE_NAME = "gocryptfs.conf";
+    private const string LONGNAME_FILE_PREFIX = "gocryptfs.longname.";
+    private const string LONGNAME_NAME_FILE_SUFFIX = ".name";
 
     public CryptFsConfigWithKeys Config { get; }
 
@@ -140,9 +144,37 @@ public class CryptFs : IVirtualDirectory
         throw new NotImplementedException(); // TODO
     }
 
-    public IAsyncEnumerable<FileEntry> ListChildren(CancellationToken cancellationToken)
+    public async IAsyncEnumerable<FileEntry> ListChildren([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        throw new NotImplementedException(); // TODO
+        using FileNameCrypto fileNameCrypto = new(Config.FileNameKey);
+        await foreach (FileEntry fileEntry in inner.ListChildren(cancellationToken))
+        {
+            // Base64URL does not include '.', so checking for the '.name' suffix is sufficient
+            if (fileEntry.Name == CONFIG_FILE_NAME || fileEntry.Name.EndsWith(LONGNAME_NAME_FILE_SUFFIX))
+            {
+                continue;
+            }
+            string encryptedFileName;
+            if (fileEntry.Name.StartsWith(LONGNAME_FILE_PREFIX))
+            {
+                string nameFileName = fileEntry.Name + LONGNAME_NAME_FILE_SUFFIX;
+                if (inner.GetChildFile(nameFileName) is not IReadable readable)
+                {
+                    throw new InvalidOperationException($"File {nameFileName} is not readable!");
+                }
+                await using Stream stream = await readable
+                    .OpenReadAsync(FileMode.Open, cancellationToken)
+                    .ConfigureAwait(false);
+                using StreamReader streamReader = new(stream, Encoding.UTF8, leaveOpen: true);
+                encryptedFileName = await streamReader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                encryptedFileName = fileEntry.Name;
+            }
+            string decryptedFileName = fileNameCrypto.Decrypt(encryptedFileName);
+            yield return new FileEntry(decryptedFileName, fileEntry.Attributes);
+        }
     }
 
     public Task DeleteAsync(CancellationToken cancellationToken)
