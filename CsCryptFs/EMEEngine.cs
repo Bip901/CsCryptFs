@@ -38,21 +38,18 @@ internal sealed class EMEEngine : IDisposable
             throw new ArgumentException($"Input data block count must be between 1 and {16 * 8}.", nameof(inputData));
         }
 
-        using ICryptoTransform decryptor = aes.CreateDecryptor();
-        using ICryptoTransform encryptor = aes.CreateEncryptor();
-        ICryptoTransform transform = decrypt ? decryptor : encryptor;
+        Func<ReadOnlySpan<byte>, Span<byte>, PaddingMode, int> transform = decrypt ? aes.DecryptEcb : aes.EncryptEcb;
 
         byte[] C = new byte[inputData.Length];
 
-        byte[][] LTable = TabulateL(encryptor, m);
+        byte[][] LTable = TabulateL(m);
 
         byte[] PPj = new byte[16];
         for (int j = 0; j < m; j++)
         {
             inputData.Slice(j * 16, 16).CopyTo(PPj);
             XorInPlace(PPj, LTable[j]);
-            byte[] transformed = transform.TransformFinalBlock(PPj, 0, PPj.Length);
-            Array.Copy(transformed, 0, C, j * 16, transformed.Length);
+            transform(PPj, C.AsSpan(j * 16, 16), PaddingMode.None);
         }
 
         byte[] MP = Clone(C.AsSpan(0, 16));
@@ -62,7 +59,8 @@ internal sealed class EMEEngine : IDisposable
             XorInPlace(MP, C.AsSpan(j * 16, 16));
         }
 
-        byte[] MC = transform.TransformFinalBlock(MP, 0, MP.Length);
+        byte[] MC = new byte[16];
+        transform(MP, MC, PaddingMode.None);
         byte[] M = Clone(MP);
         XorInPlace(M, MC);
 
@@ -87,7 +85,7 @@ internal sealed class EMEEngine : IDisposable
         for (int j = 0; j < m; j++)
         {
             Array.Copy(C, j * 16, CView, 0, 16);
-            Array.Copy(transform.TransformFinalBlock(CView, 0, CView.Length), 0, C, j * 16, 16);
+            transform(CView, C.AsSpan(j * 16, 16), PaddingMode.None);
             Array.Copy(C, j * 16, CView, 0, 16);
             XorInPlace(CView, LTable[j]);
             Array.Copy(CView, 0, C, j * 16, 16);
@@ -103,10 +101,11 @@ internal sealed class EMEEngine : IDisposable
         return result;
     }
 
-    private static byte[][] TabulateL(ICryptoTransform encryptor, int blockCount)
+    private byte[][] TabulateL(int blockCount)
     {
         byte[] eZero = new byte[16];
-        byte[] Li = encryptor.TransformFinalBlock(eZero, 0, eZero.Length);
+        byte[] Li = new byte[16];
+        aes.EncryptEcb(eZero, Li, PaddingMode.None);
         byte[][] LTable = new byte[blockCount][];
 
         for (int i = 0; i < blockCount; i++)
