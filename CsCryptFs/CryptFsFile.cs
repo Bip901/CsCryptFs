@@ -9,10 +9,10 @@ public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadab
     internal CryptFsFile(
         CryptFsConfigWithKeys config,
         IVirtualFileOrDirectory inner,
-        IVirtualDirectory? innerParent,
+        CryptFsDirectory? parent,
         IVirtualFile? longNameFile
     )
-        : base(config, inner, innerParent, longNameFile) { }
+        : base(config, inner, parent, longNameFile) { }
 
     public Task<System.IO.Stream> OpenReadAsync(System.IO.FileMode fileMode, CancellationToken cancellationToken)
     {

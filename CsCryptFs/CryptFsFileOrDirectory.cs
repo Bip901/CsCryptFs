@@ -13,29 +13,32 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
     public CryptFsConfigWithKeys Config { get; }
 
     protected readonly IVirtualFileOrDirectory inner;
-    private readonly IVirtualDirectory? innerParent;
+    private readonly CryptFsDirectory? parent;
     private IVirtualFile? longNameFile;
 
     internal CryptFsFileOrDirectory(
         CryptFsConfigWithKeys config,
         IVirtualFileOrDirectory inner,
-        IVirtualDirectory? innerParent,
+        CryptFsDirectory? parent,
         IVirtualFile? longNameFile
     )
     {
         Config = config;
         this.inner = inner;
-        this.innerParent = innerParent;
+        this.parent = parent;
         this.longNameFile = longNameFile;
     }
 
     public Task RenameAsync(string newName, bool allowOverwrite, CancellationToken cancellationToken)
     {
-        SanitizeName(newName);
-        throw new NotImplementedException(); // TODO
+        if (parent == null)
+        {
+            throw new InvalidOperationException("Can't move the root of a cryptfs volume");
+        }
+        return MoveToAsync(parent, newName, allowOverwrite, cancellationToken);
     }
 
-    public Task MoveToAsync(
+    public async Task MoveToAsync(
         IVirtualDirectory newParent,
         string newName,
         bool allowOverwrite,
@@ -43,14 +46,31 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
     )
     {
         SanitizeName(newName);
-        if (newParent is not CryptFsDirectory cryptFsDirectory || cryptFsDirectory.Config != Config)
+        if (newParent is not CryptFsDirectory targetCryptFsDirectory || targetCryptFsDirectory.Config != Config)
         {
             throw new NotSupportedException("Can only move files within the same cryptfs volume");
         }
+
         // Moving cannot be atomic because of .name files.
         // To make sure the filesystem is never in an invalid state where there's a file without a corresponding .name file,
-        // a copy of the long name file must be created.
-        throw new NotImplementedException(); // TODO
+        // a copy of the long name file must be created first.
+
+        (string shortEncryptedName, IVirtualFile? newLongNameFile) = await targetCryptFsDirectory
+            .EnsureNameAsync(newName, cancellationToken)
+            .ConfigureAwait(false);
+
+        // If the program halts here, and the new name is long, a dangling .name file is left.
+
+        IVirtualDirectory newParentInner = (IVirtualDirectory)targetCryptFsDirectory.inner;
+        await inner
+            .MoveToAsync(newParentInner, shortEncryptedName, allowOverwrite, cancellationToken)
+            .ConfigureAwait(false);
+
+        // If the program halts here, and the original name was long, a dangling .name file is left.
+
+        await TryDeleteLongNameFileAsync(cancellationToken).ConfigureAwait(false);
+
+        longNameFile = newLongNameFile;
     }
 
     public async Task DeleteAsync(CancellationToken cancellationToken)
@@ -60,15 +80,22 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
         // because then the worst case is leaving a dangling small file on disk, as opposed to
         // leaving a file with no corresponding .name entry.
         await inner.DeleteAsync(cancellationToken).ConfigureAwait(false);
-        if (longNameFile != null)
+        await TryDeleteLongNameFileAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private Task TryDeleteLongNameFileAsync(CancellationToken cancellationToken)
+    {
+        if (longNameFile == null)
         {
-            try
-            {
-                await longNameFile.DeleteAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (FileNotFoundException) { }
-            longNameFile = null;
+            return Task.CompletedTask;
         }
+        try
+        {
+            return longNameFile.DeleteAsync(cancellationToken);
+        }
+        catch (FileNotFoundException) { }
+        longNameFile = null;
+        return Task.CompletedTask;
     }
 
     public Task<FileAttributes> GetAttributesAsync(CancellationToken cancellationToken)
@@ -96,32 +123,5 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
         {
             throw new ArgumentException($"Special directory '{nameof(name)}' is not supported", nameof(name));
         }
-    }
-
-    protected async Task<(string shortEncryptedName, IVirtualFile? longNameFile)> EnsureNameAsync(
-        string name,
-        byte[] tweak,
-        CancellationToken cancellationToken
-    )
-    {
-        string encryptedName = Config.FileNameCrypto.Encrypt(name, tweak);
-        string? longNameHash = FileNameCrypto.GetLongNameHash(encryptedName, Config.Config.LongNameMax);
-        IVirtualFile? longNameFile = null;
-        if (longNameHash != null)
-        {
-            encryptedName = FileNameCrypto.LONGNAME_FILE_PREFIX + longNameHash;
-            string nameFileName = encryptedName + FileNameCrypto.LONGNAME_NAME_FILE_SUFFIX;
-            longNameFile = ((IVirtualDirectory)inner).GetChildFile(nameFileName);
-            if (longNameFile is not IWritable writable)
-            {
-                throw new InvalidOperationException($"File '{nameFileName}' is not writable");
-            }
-            await using Stream stream = await writable
-                .OpenWriteAsync(FileMode.Create, cancellationToken)
-                .ConfigureAwait(false);
-            using StreamWriter writer = new(stream, Encoding.UTF8, leaveOpen: true);
-            writer.Write(encryptedName);
-        }
-        return (encryptedName, longNameFile);
     }
 }
