@@ -13,31 +13,27 @@ namespace CsCryptFs;
 /// <summary>
 /// A gocryptfs volume.
 /// </summary>
-public class CryptFs : IVirtualDirectory
+public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
 {
     private const string CONFIG_FILE_NAME = "gocryptfs.conf";
-    private const string LONGNAME_FILE_PREFIX = "gocryptfs.longname.";
-    private const string LONGNAME_NAME_FILE_SUFFIX = ".name";
 
-    public CryptFsConfigWithKeys Config { get; }
-
-    private readonly IVirtualDirectory inner;
-
-    private CryptFs(CryptFsConfigWithKeys config, IVirtualDirectory inner)
-    {
-        Config = config;
-        this.inner = inner;
-    }
+    private CryptFsDirectory(
+        CryptFsConfigWithKeys config,
+        IVirtualDirectory inner,
+        IVirtualDirectory? innerParent,
+        IVirtualFile? longNameFile
+    )
+        : base(config, inner, innerParent, longNameFile) { }
 
     /// <summary>
     /// Creates a new cryptfs volume in the given directory.
-    /// The directory must be empty.
+    /// The <paramref name="inner"/> directory must be existing and empty.
     /// </summary>
     /// <param name="inner">The inner directory to wrap.</param>
     /// <param name="config">The configuration and keys to use.</param>
     /// <param name="cancellationToken"></param>
     /// <exception cref="InvalidOperationException"></exception>
-    public static async Task<CryptFs> CreateNewAsync(
+    public static async Task<CryptFsDirectory> CreateNewAsync(
         IVirtualDirectory inner,
         CryptFsConfigWithKeys config,
         CancellationToken cancellationToken = default
@@ -55,7 +51,7 @@ public class CryptFs : IVirtualDirectory
             .OpenWriteAsync(FileMode.CreateNew, cancellationToken)
             .ConfigureAwait(false);
         await writeStream.WriteAsync(config.Config.Serialize(), cancellationToken).ConfigureAwait(false);
-        return new CryptFs(config, inner);
+        return new CryptFsDirectory(config, inner, null, null);
     }
 
     /// <summary>
@@ -65,12 +61,12 @@ public class CryptFs : IVirtualDirectory
     /// <param name="cancellationToken">Optionally, a cancellation token.</param>
     /// <param name="password">The password to use for encrypting/decrypting the files. Exactly one of this or <paramref name="kek"/> must be non-null.</param>
     /// <param name="kek">The key derived from <paramref name="password"/>. Exactly one of this or <paramref name="password"/> must be non-null.</param>
-    /// <returns>A new <see cref="CryptFs"/> instance over the given directory.</returns>
+    /// <returns>A new <see cref="CryptFsDirectory"/> instance over the given directory.</returns>
     /// <exception cref="ArgumentException"/>
     /// <exception cref="InvalidOperationException"/>
     /// <exception cref="InvalidDataException"/>
     /// <exception cref="OperationCanceledException"/>
-    public static async Task<CryptFs> OpenExistingAsync(
+    public static async Task<CryptFsDirectory> OpenExistingAsync(
         IVirtualDirectory inner,
         string? password = null,
         byte[]? kek = null,
@@ -117,22 +113,18 @@ public class CryptFs : IVirtualDirectory
         {
             configWithKeys = await CryptFsConfigWithKeys.LoadAsync(config, password!).ConfigureAwait(false);
         }
-        return new CryptFs(configWithKeys, inner);
-    }
-
-    public IVirtualDirectory GetDescendantDirectory(ReadOnlySpan<char> relativePath)
-    {
-        throw new NotImplementedException(); // TODO
-        return new CryptFs(Config, inner.GetDescendantDirectory(relativePath));
+        return new CryptFsDirectory(configWithKeys, inner, null, null);
     }
 
     public IVirtualFile GetChildFile(ReadOnlySpan<char> name)
     {
+        SanitizeName(name);
         throw new NotImplementedException(); // TODO
     }
 
     public IVirtualDirectory GetChildDir(ReadOnlySpan<char> name)
     {
+        SanitizeName(name);
         throw new NotImplementedException(); // TODO
     }
 
@@ -148,48 +140,22 @@ public class CryptFs : IVirtualDirectory
     public async IAsyncEnumerable<FileEntry> ListChildren([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using FileNameCrypto fileNameCrypto = new(Config.FileNameKey);
-        await foreach (FileEntry fileEntry in inner.ListChildren(cancellationToken))
+        await foreach (FileEntry fileEntry in ((IVirtualDirectory)inner).ListChildren(cancellationToken))
         {
             // Base64URL does not include '.', so checking for the '.name' suffix is sufficient
-            if (fileEntry.Name == CONFIG_FILE_NAME || fileEntry.Name.EndsWith(LONGNAME_NAME_FILE_SUFFIX))
+            if (fileEntry.Name == CONFIG_FILE_NAME || fileEntry.Name.EndsWith(FileNameCrypto.LONGNAME_NAME_FILE_SUFFIX))
             {
                 continue;
             }
-            string fullEncryptedFileName = await GetFullEncryptedNameAsync(inner, fileEntry.Name, cancellationToken)
+            string fullEncryptedFileName = await GetFullEncryptedNameAsync(
+                    (IVirtualDirectory)inner,
+                    fileEntry.Name,
+                    cancellationToken
+                )
                 .ConfigureAwait(false);
             string decryptedFileName = fileNameCrypto.Decrypt(fullEncryptedFileName);
             yield return new FileEntry(decryptedFileName, fileEntry.Attributes);
         }
-    }
-
-    public Task DeleteAsync(CancellationToken cancellationToken)
-    {
-        throw new NotImplementedException(); // TODO
-    }
-
-    public Task<FileAbstractions.FileAttributes> GetAttributesAsync(CancellationToken cancellationToken)
-    {
-        throw new NotImplementedException(); // TODO
-    }
-
-    public Task SetAttributesAsync(FileAbstractions.FileAttributes attributes, CancellationToken cancellationToken)
-    {
-        throw new NotImplementedException(); // TODO
-    }
-
-    public Task RenameAsync(string newName, bool allowOverwrite, CancellationToken cancellationToken)
-    {
-        throw new NotImplementedException(); // TODO
-    }
-
-    public Task MoveToAsync(
-        IVirtualDirectory newParent,
-        string newName,
-        bool allowOverwrite,
-        CancellationToken cancellationToken
-    )
-    {
-        throw new NotImplementedException(); // TODO
     }
 
     private static async Task<string> GetFullEncryptedNameAsync(
@@ -198,11 +164,11 @@ public class CryptFs : IVirtualDirectory
         CancellationToken cancellationToken
     )
     {
-        if (!encryptedName.StartsWith(LONGNAME_FILE_PREFIX))
+        if (!encryptedName.StartsWith(FileNameCrypto.LONGNAME_FILE_PREFIX))
         {
             return encryptedName;
         }
-        string nameFileName = encryptedName + LONGNAME_NAME_FILE_SUFFIX;
+        string nameFileName = encryptedName + FileNameCrypto.LONGNAME_NAME_FILE_SUFFIX;
         if (parent.GetChildFile(nameFileName) is not IReadable readable)
         {
             throw new InvalidOperationException($"File {nameFileName} is not readable!");

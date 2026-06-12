@@ -8,6 +8,9 @@ namespace CsCryptFs;
 
 public class FileNameCrypto : IDisposable
 {
+    public const string LONGNAME_FILE_PREFIX = "gocryptfs.longname.";
+    public const string LONGNAME_NAME_FILE_SUFFIX = ".name";
+
     private readonly EMEEngine emeEngine;
     private readonly byte[] tweak;
     private readonly Pkcs7Padding padding;
@@ -27,6 +30,17 @@ public class FileNameCrypto : IDisposable
         padding.AddPadding(paddedPlaintext, plaintext.Length);
         byte[] ciphertext = emeEngine.Encrypt(tweak, paddedPlaintext);
         return Base64Url.EncodeToString(ciphertext);
+    }
+
+    public string Encrypt(string fileName, int longNameMax)
+    {
+        string encryptedFilename = Encrypt(fileName);
+        string? longNameHash = GetLongNameHash(encryptedFilename, longNameMax);
+        if (longNameHash == null)
+        {
+            return encryptedFilename;
+        }
+        return LONGNAME_FILE_PREFIX + longNameHash;
     }
 
     public string Decrypt(string fileName)

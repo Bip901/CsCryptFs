@@ -15,7 +15,7 @@ public class EndToEndTests
     {
         LocalDirectory referenceDir = new(Path.Combine(AppContext.BaseDirectory, "reference"));
 
-        CryptFs cryptFs = await CryptFs.OpenExistingAsync(
+        CryptFsDirectory cryptFs = await CryptFsDirectory.OpenExistingAsync(
             referenceDir,
             "1234",
             cancellationToken: TestContext.Current.CancellationToken
