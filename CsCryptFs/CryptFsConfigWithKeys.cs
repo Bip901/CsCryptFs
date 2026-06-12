@@ -1,20 +1,19 @@
+using System;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 
 namespace CsCryptFs;
 
 /// <param name="Config">Configuration.</param>
-/// <param name="KeyEncryptionKey">The KEK is a 32-byte key derived from the master password, used to encrypt/decrypt the <see cref="CryptFsConfig.EncryptedKey"/> property (<paramref name="MasterKey"/>).</param>
-/// <param name="MasterKey">The 32-byte key encrypted with <paramref name="KeyEncryptionKey"/> used for filesystem encryption.</param>
-/// <param name="ContentKey">The 32-byte key for content encryption, derived from <paramref name="MasterKey"/>.</param>
-/// <param name="FileNameKey">The 32-byte key for file name encryption, derived from <paramref name="MasterKey"/>.</param>
+/// <param name="KeyEncryptionKey">The KEK is a 32-byte key derived from the master password, used to encrypt/decrypt the <see cref="CryptFsConfig.EncryptedKey"/> property.</param>
+/// <param name="ContentKey">The 32-byte key for content encryption, derived from the master key.</param>
+/// <param name="FileNameCrypto">An object that encrypts/decrypts file names with a 32-byte key for file name encryption, derived from the master key.</param>
 public record CryptFsConfigWithKeys(
     CryptFsConfig Config,
     byte[] KeyEncryptionKey,
-    byte[] MasterKey,
     byte[] ContentKey,
-    byte[] FileNameKey
-)
+    FileNameCrypto FileNameCrypto
+) : IDisposable
 {
     public static async Task<CryptFsConfigWithKeys> CreateNewAsync(string password)
     {
@@ -56,6 +55,12 @@ public record CryptFsConfigWithKeys(
     {
         byte[] contentKey = EncryptionKeysCrypto.GetFileContentEncryptionKey(masterKey);
         byte[] fileNameKey = EncryptionKeysCrypto.GetFilenameEncryptionKey(masterKey);
-        return new CryptFsConfigWithKeys(config, keyEncryptionKey, masterKey, contentKey, fileNameKey);
+        return new CryptFsConfigWithKeys(config, keyEncryptionKey, contentKey, new FileNameCrypto(fileNameKey));
+    }
+
+    public void Dispose()
+    {
+        GC.SuppressFinalize(this);
+        FileNameCrypto.Dispose();
     }
 }

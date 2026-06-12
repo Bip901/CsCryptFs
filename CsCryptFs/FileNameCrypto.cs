@@ -12,17 +12,15 @@ public class FileNameCrypto : IDisposable
     public const string LONGNAME_NAME_FILE_SUFFIX = ".name";
 
     private readonly EMEEngine emeEngine;
-    private readonly byte[] tweak;
     private readonly Pkcs7Padding padding;
 
-    public FileNameCrypto(byte[] key, byte[]? tweak = null)
+    public FileNameCrypto(byte[] key)
     {
         emeEngine = new(key);
-        this.tweak = tweak ?? new byte[16];
         padding = new();
     }
 
-    public string Encrypt(string fileName)
+    public string Encrypt(string fileName, byte[] tweak)
     {
         byte[] plaintext = Encoding.UTF8.GetBytes(fileName);
         byte[] paddedPlaintext = new byte[plaintext.Length + (16 - plaintext.Length % 16)];
@@ -32,9 +30,9 @@ public class FileNameCrypto : IDisposable
         return Base64Url.EncodeToString(ciphertext);
     }
 
-    public string Encrypt(string fileName, int longNameMax)
+    public string Encrypt(string fileName, byte[] tweak, int longNameMax)
     {
-        string encryptedFilename = Encrypt(fileName);
+        string encryptedFilename = Encrypt(fileName, tweak);
         string? longNameHash = GetLongNameHash(encryptedFilename, longNameMax);
         if (longNameHash == null)
         {
@@ -43,7 +41,7 @@ public class FileNameCrypto : IDisposable
         return LONGNAME_FILE_PREFIX + longNameHash;
     }
 
-    public string Decrypt(string fileName)
+    public string Decrypt(string fileName, byte[] tweak)
     {
         byte[] ciphertext = Base64Url.DecodeFromChars(fileName);
         byte[] paddedPlaintext = emeEngine.Decrypt(tweak, ciphertext);

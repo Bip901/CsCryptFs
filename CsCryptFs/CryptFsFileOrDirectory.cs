@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FileAbstractions;
@@ -81,7 +82,7 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
     }
 
     /// <exception cref="ArgumentException">The name was invalid.</exception>
-    public static void SanitizeName(ReadOnlySpan<char> name)
+    protected static void SanitizeName(ReadOnlySpan<char> name)
     {
         if (name.Contains(PathParser.DIRECTORY_SEPARATOR_CHAR))
         {
@@ -95,5 +96,32 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
         {
             throw new ArgumentException($"Special directory '{nameof(name)}' is not supported", nameof(name));
         }
+    }
+
+    protected async Task<(string shortEncryptedName, IVirtualFile? longNameFile)> EnsureNameAsync(
+        string name,
+        byte[] tweak,
+        CancellationToken cancellationToken
+    )
+    {
+        string encryptedName = Config.FileNameCrypto.Encrypt(name, tweak);
+        string? longNameHash = FileNameCrypto.GetLongNameHash(encryptedName, Config.Config.LongNameMax);
+        IVirtualFile? longNameFile = null;
+        if (longNameHash != null)
+        {
+            encryptedName = FileNameCrypto.LONGNAME_FILE_PREFIX + longNameHash;
+            string nameFileName = encryptedName + FileNameCrypto.LONGNAME_NAME_FILE_SUFFIX;
+            longNameFile = ((IVirtualDirectory)inner).GetChildFile(nameFileName);
+            if (longNameFile is not IWritable writable)
+            {
+                throw new InvalidOperationException($"File '{nameFileName}' is not writable");
+            }
+            await using Stream stream = await writable
+                .OpenWriteAsync(FileMode.Create, cancellationToken)
+                .ConfigureAwait(false);
+            using StreamWriter writer = new(stream, Encoding.UTF8, leaveOpen: true);
+            writer.Write(encryptedName);
+        }
+        return (encryptedName, longNameFile);
     }
 }

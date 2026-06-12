@@ -13,9 +13,10 @@ namespace CsCryptFs;
 /// <summary>
 /// A gocryptfs volume.
 /// </summary>
-public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
+public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory, IDisposable
 {
     private const string CONFIG_FILE_NAME = "gocryptfs.conf";
+    private static readonly byte[] EMPTY_TWEAK = new byte[16];
 
     private CryptFsDirectory(
         CryptFsConfigWithKeys config,
@@ -119,13 +120,29 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
     public IVirtualFile GetChildFile(ReadOnlySpan<char> name)
     {
         SanitizeName(name);
-        throw new NotImplementedException(); // TODO
+        string shortEncryptedName = GetShortEncryptedName(name.ToString());
+        IVirtualDirectory innerDir = (IVirtualDirectory)inner;
+        IVirtualFile newInner = innerDir.GetChildFile(shortEncryptedName);
+        IVirtualFile? longNameFile = null;
+        if (shortEncryptedName.StartsWith(FileNameCrypto.LONGNAME_FILE_PREFIX))
+        {
+            longNameFile = innerDir.GetChildFile(shortEncryptedName + FileNameCrypto.LONGNAME_NAME_FILE_SUFFIX);
+        }
+        return new CryptFsFile(Config, newInner, innerDir, longNameFile);
     }
 
     public IVirtualDirectory GetChildDir(ReadOnlySpan<char> name)
     {
         SanitizeName(name);
-        throw new NotImplementedException(); // TODO
+        string shortEncryptedName = GetShortEncryptedName(name.ToString());
+        IVirtualDirectory innerDir = (IVirtualDirectory)inner;
+        IVirtualDirectory newInner = innerDir.GetChildDir(shortEncryptedName);
+        IVirtualFile? longNameFile = null;
+        if (shortEncryptedName.StartsWith(FileNameCrypto.LONGNAME_FILE_PREFIX))
+        {
+            longNameFile = innerDir.GetChildFile(shortEncryptedName + FileNameCrypto.LONGNAME_NAME_FILE_SUFFIX);
+        }
+        return new CryptFsDirectory(Config, newInner, innerDir, longNameFile);
     }
 
     public Task<IVirtualDirectory> MakeDirAsync(
@@ -134,12 +151,32 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
         CancellationToken cancellationToken
     )
     {
-        throw new NotImplementedException(); // TODO
+        SanitizeName(name);
+        return MakeDirInternalAsync(name.ToString(), attributes, cancellationToken);
+    }
+
+    private async Task<IVirtualDirectory> MakeDirInternalAsync(
+        string name,
+        FileAbstractions.FileAttributes attributes,
+        CancellationToken cancellationToken
+    )
+    {
+        (string shortEncryptedName, IVirtualFile? longNameFile) = await EnsureNameAsync(
+                name,
+                EMPTY_TWEAK,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+        IVirtualDirectory newInnerDir = await ((IVirtualDirectory)inner).MakeDirAsync(
+            shortEncryptedName,
+            attributes,
+            cancellationToken
+        );
+        return new CryptFsDirectory(Config, newInnerDir, (IVirtualDirectory)inner, longNameFile);
     }
 
     public async IAsyncEnumerable<FileEntry> ListChildren([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        using FileNameCrypto fileNameCrypto = new(Config.FileNameKey);
         await foreach (FileEntry fileEntry in ((IVirtualDirectory)inner).ListChildren(cancellationToken))
         {
             // Base64URL does not include '.', so checking for the '.name' suffix is sufficient
@@ -153,22 +190,27 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
                     cancellationToken
                 )
                 .ConfigureAwait(false);
-            string decryptedFileName = fileNameCrypto.Decrypt(fullEncryptedFileName);
+            string decryptedFileName = Config.FileNameCrypto.Decrypt(fullEncryptedFileName, EMPTY_TWEAK);
             yield return new FileEntry(decryptedFileName, fileEntry.Attributes);
         }
     }
 
+    private string GetShortEncryptedName(string name)
+    {
+        return Config.FileNameCrypto.Encrypt(name, EMPTY_TWEAK, Config.Config.LongNameMax);
+    }
+
     private static async Task<string> GetFullEncryptedNameAsync(
         IVirtualDirectory parent,
-        string encryptedName,
+        string shortEncryptedName,
         CancellationToken cancellationToken
     )
     {
-        if (!encryptedName.StartsWith(FileNameCrypto.LONGNAME_FILE_PREFIX))
+        if (!shortEncryptedName.StartsWith(FileNameCrypto.LONGNAME_FILE_PREFIX))
         {
-            return encryptedName;
+            return shortEncryptedName;
         }
-        string nameFileName = encryptedName + FileNameCrypto.LONGNAME_NAME_FILE_SUFFIX;
+        string nameFileName = shortEncryptedName + FileNameCrypto.LONGNAME_NAME_FILE_SUFFIX;
         if (parent.GetChildFile(nameFileName) is not IReadable readable)
         {
             throw new InvalidOperationException($"File {nameFileName} is not readable!");
@@ -183,5 +225,11 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
     public IVirtualFileOrDirectory GetExistingChild(ReadOnlySpan<char> name)
     {
         throw new NotSupportedException();
+    }
+
+    public void Dispose()
+    {
+        GC.SuppressFinalize(this);
+        Config.Dispose();
     }
 }
