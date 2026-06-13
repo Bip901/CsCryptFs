@@ -30,15 +30,20 @@ public class FileNameCrypto : IDisposable
         return Base64Url.EncodeToString(ciphertext);
     }
 
-    public string Encrypt(string fileName, byte[] tweak, int longNameMax)
+    public (string shortEncryptedName, string fullEncryptedName) Encrypt(string fileName, byte[] tweak, int longNameMax)
     {
-        string encryptedFilename = Encrypt(fileName, tweak);
-        string? longNameHash = GetLongNameHash(encryptedFilename, longNameMax);
+        string fullEncryptedName = Encrypt(fileName, tweak);
+        string shortEncryptedName;
+        string? longNameHash = GetLongNameHash(fullEncryptedName, longNameMax);
         if (longNameHash == null)
         {
-            return encryptedFilename;
+            shortEncryptedName = fullEncryptedName;
         }
-        return LONGNAME_FILE_PREFIX + longNameHash;
+        else
+        {
+            shortEncryptedName = LONGNAME_FILE_PREFIX + longNameHash;
+        }
+        return (shortEncryptedName, fullEncryptedName);
     }
 
     public string Decrypt(string fileName, byte[] tweak)
@@ -51,7 +56,7 @@ public class FileNameCrypto : IDisposable
     /// <summary>
     /// Returns the long name hash of the given encrypted file name, or null if it's short enough to not require a long name hash.
     /// </summary>
-    public static string? GetLongNameHash(string encryptedFileName, int longNameMax)
+    private static string? GetLongNameHash(string encryptedFileName, int longNameMax)
     {
         if (encryptedFileName.Length <= longNameMax)
         {

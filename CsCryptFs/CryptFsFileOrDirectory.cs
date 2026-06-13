@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FileAbstractions;
@@ -13,20 +12,23 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
     public CryptFsConfigWithKeys Config { get; }
 
     protected readonly IVirtualFileOrDirectory inner;
-    private readonly CryptFsDirectory? parent;
-    private IVirtualFile? longNameFile;
+    protected readonly CryptFsDirectory? parent;
+    protected string? fullEncryptedName;
+    protected IVirtualFile? longNameFile;
 
     internal CryptFsFileOrDirectory(
         CryptFsConfigWithKeys config,
         IVirtualFileOrDirectory inner,
         CryptFsDirectory? parent,
-        IVirtualFile? longNameFile
+        IVirtualFile? longNameFile,
+        string? fullEncryptedName
     )
     {
         Config = config;
         this.inner = inner;
         this.parent = parent;
         this.longNameFile = longNameFile;
+        this.fullEncryptedName = fullEncryptedName;
     }
 
     public Task RenameAsync(string newName, bool allowOverwrite, CancellationToken cancellationToken)
@@ -55,7 +57,7 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
         // To make sure the filesystem is never in an invalid state where there's a file without a corresponding .name file,
         // a copy of the long name file must be created first.
 
-        (string shortEncryptedName, IVirtualFile? newLongNameFile) = await targetCryptFsDirectory
+        (string newShortEncryptedName, string newFullEncryptedName, IVirtualFile? newLongNameFile) = await targetCryptFsDirectory
             .EnsureNameAsync(newName, cancellationToken)
             .ConfigureAwait(false);
 
@@ -63,14 +65,15 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
 
         IVirtualDirectory newParentInner = (IVirtualDirectory)targetCryptFsDirectory.inner;
         await inner
-            .MoveToAsync(newParentInner, shortEncryptedName, allowOverwrite, cancellationToken)
+            .MoveToAsync(newParentInner, newShortEncryptedName, allowOverwrite, cancellationToken)
             .ConfigureAwait(false);
 
         // If the program halts here, and the original name was long, a dangling .name file is left.
 
-        await TryDeleteLongNameFileAsync(cancellationToken).ConfigureAwait(false);
-
+        fullEncryptedName = newFullEncryptedName;
+        IVirtualFile? originalLongNameFile = longNameFile;
         longNameFile = newLongNameFile;
+        await TryDeleteLongNameFileAsync(originalLongNameFile, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DeleteAsync(CancellationToken cancellationToken)
@@ -80,22 +83,9 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
         // because then the worst case is leaving a dangling small file on disk, as opposed to
         // leaving a file with no corresponding .name entry.
         await inner.DeleteAsync(cancellationToken).ConfigureAwait(false);
-        await TryDeleteLongNameFileAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    private Task TryDeleteLongNameFileAsync(CancellationToken cancellationToken)
-    {
-        if (longNameFile == null)
-        {
-            return Task.CompletedTask;
-        }
-        try
-        {
-            return longNameFile.DeleteAsync(cancellationToken);
-        }
-        catch (FileNotFoundException) { }
+        IVirtualFile? originalLongNameFile = longNameFile;
         longNameFile = null;
-        return Task.CompletedTask;
+        await TryDeleteLongNameFileAsync(originalLongNameFile, cancellationToken).ConfigureAwait(false);
     }
 
     public Task<FileAttributes> GetAttributesAsync(CancellationToken cancellationToken)
@@ -106,6 +96,22 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
     public Task SetAttributesAsync(FileAttributes attributes, CancellationToken cancellationToken)
     {
         return inner.SetAttributesAsync(attributes, cancellationToken);
+    }
+
+    private static Task TryDeleteLongNameFileAsync(IVirtualFile? longNameFile, CancellationToken cancellationToken)
+    {
+        if (longNameFile == null)
+        {
+            return Task.CompletedTask;
+        }
+        try
+        {
+            return longNameFile.DeleteAsync(cancellationToken);
+        }
+        catch (FileNotFoundException)
+        {
+            return Task.CompletedTask;
+        }
     }
 
     /// <exception cref="ArgumentException">The name was invalid.</exception>
