@@ -200,11 +200,7 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory, IDisp
             {
                 throw new InvalidOperationException($"File '{nameFileName}' is not writable");
             }
-            await using Stream stream = await writable
-                .OpenWriteAsync(FileMode.Create, cancellationToken)
-                .ConfigureAwait(false);
-            using StreamWriter writer = new(stream, Encoding.UTF8, leaveOpen: true);
-            writer.Write(encryptedName);
+            await writable.WriteAllTextAsync(FileMode.Create, encryptedName, cancellationToken).ConfigureAwait(false);
         }
         return (encryptedName, longNameFile);
     }
@@ -244,11 +240,7 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory, IDisp
         {
             throw new InvalidOperationException($"File {nameFileName} is not readable!");
         }
-        await using Stream stream = await readable
-            .OpenReadAsync(FileMode.Open, cancellationToken)
-            .ConfigureAwait(false);
-        using StreamReader streamReader = new(stream, Encoding.UTF8, leaveOpen: true);
-        return await streamReader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+        return await readable.ReadAllTextAsync(FileMode.Open, cancellationToken).ConfigureAwait(false);
     }
 
     public IVirtualFileOrDirectory GetExistingChild(ReadOnlySpan<char> name)

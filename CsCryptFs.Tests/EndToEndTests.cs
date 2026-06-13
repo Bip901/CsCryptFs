@@ -50,23 +50,18 @@ public class EndToEndTests
         Assert.Equal("Hello World", actualExampleFileText);
 
         IVirtualFile longFile = cryptFs.GetChildFile(LONG_FILE_NAME);
-        string actualLongFileText = await ReadAllTextAsync(exampleFile);
-        Assert.Equal("This is a very long file!\n", actualLongFileText);
+        string actualLongFileText = await ReadAllTextAsync(longFile);
+        Assert.Equal("This is a very long file!\r\n", actualLongFileText);
 
         IVirtualFile innerFile = ((IVirtualDirectory)cryptFs).GetDescendantFile(
             $"{SUBDIR_NAME}{PathParser.DIRECTORY_SEPARATOR_CHAR}Inner.txt"
         );
         string actualInnerFileText = await ReadAllTextAsync(innerFile);
-        Assert.Equal("This file is within a directory.\n", actualInnerFileText);
+        Assert.Equal("This file is within a directory.\r\n", actualInnerFileText);
     }
 
-    private static async Task<string> ReadAllTextAsync(IVirtualFile file)
+    private static Task<string> ReadAllTextAsync(IVirtualFile file)
     {
-        await using Stream readStream = await ((IReadable)file).OpenReadAsync(
-            FileMode.Open,
-            TestContext.Current.CancellationToken
-        );
-        using StreamReader reader = new(readStream, Encoding.UTF8, leaveOpen: true);
-        return await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
+        return ((IReadable)file).ReadAllTextAsync(FileMode.Open, TestContext.Current.CancellationToken);
     }
 }
