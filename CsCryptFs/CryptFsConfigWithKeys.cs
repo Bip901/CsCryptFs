@@ -13,7 +13,7 @@ public record CryptFsConfigWithKeys(
     byte[] KeyEncryptionKey,
     byte[] ContentKey,
     FileNameCrypto FileNameCrypto
-) : IDisposable
+)
 {
     public static async Task<CryptFsConfigWithKeys> CreateNewAsync(string password)
     {
@@ -55,12 +55,11 @@ public record CryptFsConfigWithKeys(
     {
         byte[] contentKey = EncryptionKeysCrypto.GetFileContentEncryptionKey(masterKey);
         byte[] fileNameKey = EncryptionKeysCrypto.GetFilenameEncryptionKey(masterKey);
-        return new CryptFsConfigWithKeys(config, keyEncryptionKey, contentKey, new FileNameCrypto(fileNameKey));
-    }
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-        FileNameCrypto.Dispose();
+        return new CryptFsConfigWithKeys(
+            config,
+            keyEncryptionKey,
+            new FileContentCrypto(contentKey),
+            new FileNameCrypto(fileNameKey)
+        );
     }
 }

@@ -12,7 +12,7 @@ namespace CsCryptFs;
 /// <summary>
 /// A gocryptfs volume.
 /// </summary>
-public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory, IDisposable
+public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
 {
     private const string CONFIG_FILE_NAME = "gocryptfs.conf";
     private static readonly byte[] EMPTY_TWEAK = new byte[16];
@@ -257,11 +257,5 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory, IDisp
     public IVirtualFileOrDirectory GetExistingChild(ReadOnlySpan<char> name)
     {
         throw new NotSupportedException();
-    }
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-        Config.Dispose();
     }
 }

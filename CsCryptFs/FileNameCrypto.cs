@@ -6,17 +6,17 @@ using Org.BouncyCastle.Crypto.Paddings;
 
 namespace CsCryptFs;
 
-public class FileNameCrypto : IDisposable
+public class FileNameCrypto
 {
     public const string LONGNAME_FILE_PREFIX = "gocryptfs.longname.";
     public const string LONGNAME_NAME_FILE_SUFFIX = ".name";
 
-    private readonly EMEEngine emeEngine;
+    private readonly byte[] key;
     private readonly Pkcs7Padding padding;
 
     public FileNameCrypto(byte[] key)
     {
-        emeEngine = new(key);
+        this.key = key;
         padding = new();
     }
 
@@ -26,7 +26,11 @@ public class FileNameCrypto : IDisposable
         byte[] paddedPlaintext = new byte[plaintext.Length + (16 - plaintext.Length % 16)];
         Array.Copy(plaintext, 0, paddedPlaintext, 0, plaintext.Length);
         padding.AddPadding(paddedPlaintext, plaintext.Length);
-        byte[] ciphertext = emeEngine.Encrypt(tweak, paddedPlaintext);
+        byte[] ciphertext;
+        using (EMEEngine emeEngine = new(key))
+        {
+            ciphertext = emeEngine.Encrypt(tweak, paddedPlaintext);
+        }
         return Base64Url.EncodeToString(ciphertext);
     }
 
@@ -49,7 +53,11 @@ public class FileNameCrypto : IDisposable
     public string Decrypt(string fileName, byte[] tweak)
     {
         byte[] ciphertext = Base64Url.DecodeFromChars(fileName);
-        byte[] paddedPlaintext = emeEngine.Decrypt(tweak, ciphertext);
+        byte[] paddedPlaintext;
+        using (EMEEngine emeEngine = new(key))
+        {
+            paddedPlaintext = emeEngine.Decrypt(tweak, ciphertext);
+        }
         return Encoding.UTF8.GetString(paddedPlaintext, 0, paddedPlaintext.Length - padding.PadCount(paddedPlaintext));
     }
 
@@ -64,11 +72,5 @@ public class FileNameCrypto : IDisposable
         }
         byte[] encryptedFileNameHash = SHA256.HashData(Encoding.UTF8.GetBytes(encryptedFileName));
         return Base64Url.EncodeToString(encryptedFileNameHash);
-    }
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-        emeEngine.Dispose();
     }
 }
