@@ -33,7 +33,7 @@ public record CryptFsConfigWithKeys(
             Creator = "CsCryptFs " + typeof(CryptFsConfigWithKeys).Assembly.GetName().Version?.ToString(),
             EncryptedKey = EncryptionKeysCrypto.EncryptKey(keyEncryptionKey, masterKey),
             ScryptObject = scryptParams,
-            Version = CryptFsConfig.SUPPORTED_CONFIG_VERSION,
+            Version = CryptFsConfig.CURRENT_VERSION,
             FeatureFlags = CryptFsConfig.ExpectedFeatureFlags,
         };
         return Load(config, keyEncryptionKey, masterKey);

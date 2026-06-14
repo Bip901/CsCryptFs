@@ -8,7 +8,7 @@ namespace CsCryptFs;
 
 public class CryptFsConfig
 {
-    public const int SUPPORTED_CONFIG_VERSION = 2;
+    public const int CURRENT_VERSION = 2;
     public static readonly List<string> ExpectedFeatureFlags = ["EMENames", "LongNames", "HKDF", "Raw64", "GCMIV128"];
 
     public string Creator { get; set; } = string.Empty;
@@ -64,10 +64,10 @@ public class CryptFsConfig
     {
         CryptFsConfig? config =
             Deserialize(utf8Json) ?? throw new InvalidDataException("Config file JSON contents were literally 'null'");
-        if (config.Version != SUPPORTED_CONFIG_VERSION)
+        if (config.Version != CURRENT_VERSION)
         {
             throw new InvalidDataException(
-                $"Config file version {config.Version} is not supported (expected {SUPPORTED_CONFIG_VERSION})"
+                $"Config file version {config.Version} is not supported (expected {CURRENT_VERSION})"
             );
         }
         if (
