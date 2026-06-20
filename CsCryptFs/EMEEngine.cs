@@ -12,6 +12,9 @@ public sealed class EMEEngine : IDisposable
 {
     private readonly Aes aes;
 
+    /// <summary>
+    /// Creates a new <see cref="EMEEngine"/> with the specified key.
+    /// </summary>
     public EMEEngine(byte[] key)
     {
         aes = Aes.Create();
@@ -20,10 +23,31 @@ public sealed class EMEEngine : IDisposable
         aes.Key = key;
     }
 
+    /// <summary>
+    /// Encrypts the given input data with the given tweak and returns a new byte array containing the result.
+    /// </summary>
+    /// <param name="tweak">A 16-byte, random, non-secret iv.</param>
+    /// <param name="inputData">The plaintext data to encrypt. Must be a multiple of 16 bytes long, and up to 2048 bytes total.</param>
+    /// <exception cref="ArgumentException"/>
     public byte[] Encrypt(ReadOnlySpan<byte> tweak, ReadOnlySpan<byte> inputData) => Transform(tweak, inputData, false);
 
+    /// <summary>
+    /// Decrypts the given input data with the given tweak and returns a new byte array containing the result.
+    /// </summary>
+    /// <param name="tweak">A 16-byte, random, non-secret iv.</param>
+    /// <param name="inputData">The ciphertext data to decrypt. Must be a multiple of 16 bytes long, and up to 2048 bytes total.</param>
+    /// <exception cref="ArgumentException"/>
+    /// <exception cref="CryptographicException"/>
     public byte[] Decrypt(ReadOnlySpan<byte> tweak, ReadOnlySpan<byte> inputData) => Transform(tweak, inputData, true);
 
+    /// <summary>
+    /// Either encrypts or decrypts the given input data, and returns the transformed result.
+    /// </summary>
+    /// <param name="tweak">A 16-byte, random, non-secret iv.</param>
+    /// <param name="inputData">The data to transform. Must be a multiple of 16 bytes long, and up to 2048 bytes total.</param>
+    /// <param name="decrypt">Whether to decrypt (true) or encrypt (false) the data.</param>
+    /// <exception cref="ArgumentException"/>
+    /// <exception cref="CryptographicException"/>
     public byte[] Transform(ReadOnlySpan<byte> tweak, ReadOnlySpan<byte> inputData, bool decrypt)
     {
         if (tweak.Length != 16)
@@ -145,6 +169,7 @@ public sealed class EMEEngine : IDisposable
         }
     }
 
+    /// <inheritdoc/>
     public void Dispose()
     {
         aes.Dispose();
