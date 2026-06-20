@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -51,8 +53,19 @@ public class EndToEndTests
         Assert.Equal(string.Empty, actualEmptyFileText);
 
         IVirtualFile exampleFile = cryptFs.GetChildFile(EXAMPLE_FILE_NAME);
+        const long expectedExampleFileLength = 4096 * 3;
+        FileAttributes exampleFileAttributes = await exampleFile.GetAttributesAsync(
+            TestContext.Current.CancellationToken
+        );
+        Assert.Contains(
+            exampleFileAttributes,
+            fileEntries.Select(entry => entry.Attributes),
+            new AccessTimeAgnosticFileAttributesComparer()
+        );
+        Assert.Equal<ulong>(expectedExampleFileLength, exampleFileAttributes.FileSize.GetValueOrDefault());
+
         byte[] actualExampleFileBytes = await ReadAllBytesAsync(exampleFile, TestContext.Current.CancellationToken);
-        Assert.Equal(4096 * 3, actualExampleFileBytes.Length);
+        Assert.Equal(expectedExampleFileLength, actualExampleFileBytes.Length);
         Assert.Equal(Enumerable.Repeat((byte)'A', 4096), actualExampleFileBytes.Take(4096));
         Assert.Equal(Enumerable.Repeat((byte)0, 4096), actualExampleFileBytes.Skip(4096).Take(4096));
         Assert.Equal(Enumerable.Repeat((byte)'C', 4096), actualExampleFileBytes.Skip(4096 * 2).Take(4096));
@@ -81,5 +94,22 @@ public class EndToEndTests
         using MemoryStream memoryStream = new();
         await stream.CopyToAsync(memoryStream, cancellationToken);
         return memoryStream.ToArray();
+    }
+
+    class AccessTimeAgnosticFileAttributesComparer : IEqualityComparer<FileAttributes>
+    {
+        public bool Equals(FileAttributes? x, FileAttributes? y)
+        {
+            if (ReferenceEquals(x, y))
+                return true;
+            if (x is null || y is null)
+                return false;
+            return (x with { LastAccessedTime = y.LastAccessedTime}).Equals(y);
+        }
+
+        public int GetHashCode([DisallowNull] FileAttributes obj)
+        {
+            return HashCode.Combine(obj.FileSize, obj.IsDirectory, obj.LastModifiedTime);
+        }
     }
 }
