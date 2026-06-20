@@ -6,20 +6,32 @@ using Org.BouncyCastle.Crypto.Paddings;
 
 namespace CsCryptFs;
 
+/// <summary>
+/// Encrypts and decrypts file and directory names.
+/// </summary>
 public class FileNameCrypto
 {
-    public const string LONGNAME_FILE_PREFIX = "gocryptfs.longname.";
-    public const string LONGNAME_NAME_FILE_SUFFIX = ".name";
+    internal const string LONGNAME_FILE_PREFIX = "gocryptfs.longname.";
+    internal const string LONGNAME_NAME_FILE_SUFFIX = ".name";
 
     private readonly byte[] key;
     private readonly Pkcs7Padding padding;
 
+    /// <summary>
+    /// Creates a new <see cref="FileNameCrypto"/> instance.
+    /// </summary>
+    /// <param name="key">The AES EME key to use.</param>
     public FileNameCrypto(byte[] key)
     {
         this.key = key;
         padding = new();
     }
 
+    /// <summary>
+    /// Returns the encrypted name of the file or directory (in unpadded base64 url string form).
+    /// </summary>
+    /// <param name="fileName">The plaintext file name.</param>
+    /// <param name="tweak">A directory-specific tweak (diriv) to apply.</param>
     public string Encrypt(string fileName, byte[] tweak)
     {
         byte[] plaintext = Encoding.UTF8.GetBytes(fileName);
@@ -34,6 +46,13 @@ public class FileNameCrypto
         return Base64Url.EncodeToString(ciphertext);
     }
 
+    /// <summary>
+    /// Returns both the full encrypted name of the file or directory (in unpadded base64 url string form),
+    /// and the short hashed encrypted name which is guaranteed to be &lt;= <paramref name="longNameMax"/> characters long.
+    /// </summary>
+    /// <param name="fileName">The plaintext file name.</param>
+    /// <param name="tweak">A directory-specific tweak (diriv) to apply.</param>
+    /// <param name="longNameMax">The maximum amount of characters (post-base64) the filesystem allows.</param>
     public (string shortEncryptedName, string fullEncryptedName) Encrypt(string fileName, byte[] tweak, int longNameMax)
     {
         string fullEncryptedName = Encrypt(fileName, tweak);
@@ -50,6 +69,13 @@ public class FileNameCrypto
         return (shortEncryptedName, fullEncryptedName);
     }
 
+    /// <summary>
+    /// Decrypts the given ciphertext name.
+    /// </summary>
+    /// <param name="fileName">An encrypted file name in unpadded base64 url form.</param>
+    /// <param name="tweak">A directory-specific tweak (diriv) to apply.</param>
+    /// <exception cref="ArgumentException"/>
+    /// <exception cref="FormatException"/>
     public string Decrypt(string fileName, byte[] tweak)
     {
         if (fileName.EndsWith('='))
