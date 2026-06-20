@@ -52,6 +52,11 @@ public class FileNameCrypto
 
     public string Decrypt(string fileName, byte[] tweak)
     {
+        if (fileName.EndsWith('='))
+        {
+            // We always assume the Raw64 configuration flag is set
+            throw new ArgumentException($"Padding is not allowed in filename '{fileName}'", nameof(fileName));
+        }
         byte[] ciphertext = Base64Url.DecodeFromChars(fileName);
         byte[] paddedPlaintext;
         using (EMEEngine emeEngine = new(key))
