@@ -1,4 +1,3 @@
-using System;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 
@@ -55,11 +54,6 @@ public record CryptFsConfigWithKeys(
     {
         byte[] contentKey = EncryptionKeysCrypto.GetFileContentEncryptionKey(masterKey);
         byte[] fileNameKey = EncryptionKeysCrypto.GetFilenameEncryptionKey(masterKey);
-        return new CryptFsConfigWithKeys(
-            config,
-            keyEncryptionKey,
-            new FileContentCrypto(contentKey),
-            new FileNameCrypto(fileNameKey)
-        );
+        return new CryptFsConfigWithKeys(config, keyEncryptionKey, contentKey, new FileNameCrypto(fileNameKey));
     }
 }

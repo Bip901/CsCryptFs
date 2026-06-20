@@ -27,7 +27,7 @@ public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadab
         FileAttributes attributes = await inner.GetAttributesAsync(cancellationToken).ConfigureAwait(false);
         return attributes with
         {
-            FileSize = FileContentCrypto.GetPlaintextSize(attributes.FileSize.GetValueOrDefault()),
+            FileSize = FileContentSizeCrypto.GetPlaintextSize(attributes.FileSize.GetValueOrDefault()),
         };
     }
 
@@ -42,14 +42,11 @@ public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadab
         {
             await EnsureLongNameFileExistsAsync(cancellationToken).ConfigureAwait(false);
         }
-        await using Stream innerStream = await readable
-            .OpenReadAsync(fileMode, cancellationToken)
-            .ConfigureAwait(false);
-        return await CryptContentCrypto
-            .OpenReadAsync(innerStream, Config.ContentKey, cancellationToken)
-            .ConfigureAwait(false);
+        Stream innerStream = await readable.OpenReadAsync(fileMode, cancellationToken).ConfigureAwait(false);
+        return new CryptFsStream(innerStream, Config.ContentKey, isReadOnly: true);
     }
 
+    /// <inheritdoc/>
     public async Task<Stream> OpenWriteAsync(FileMode fileMode, CancellationToken cancellationToken)
     {
         if (inner is not IWritable writable)
@@ -61,9 +58,10 @@ public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadab
             await EnsureLongNameFileExistsAsync(cancellationToken).ConfigureAwait(false);
         }
         Stream innerStream = await writable.OpenWriteAsync(fileMode, cancellationToken).ConfigureAwait(false);
-        return CryptContentCrypto.OpenWrite(innerStream, Config.ContentKey);
+        return new CryptFsStream(innerStream, Config.ContentKey, isReadOnly: false);
     }
 
+    /// <inheritdoc/>
     public async Task<Stream> OpenReadWriteAsync(FileMode fileMode, CancellationToken cancellationToken)
     {
         if (inner is not IReadableWriteable readableWriteable)
@@ -77,9 +75,7 @@ public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadab
         Stream innerStream = await readableWriteable
             .OpenReadWriteAsync(fileMode, cancellationToken)
             .ConfigureAwait(false);
-        return await CryptContentCrypto
-            .OpenReadWriteAsync(innerStream, Config.ContentKey, cancellationToken)
-            .ConfigureAwait(false);
+        return new CryptFsStream(innerStream, Config.ContentKey, isReadOnly: false);
     }
 
     private Task EnsureLongNameFileExistsAsync(CancellationToken cancellationToken)

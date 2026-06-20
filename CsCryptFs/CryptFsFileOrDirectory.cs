@@ -57,9 +57,8 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
         // To make sure the filesystem is never in an invalid state where there's a file without a corresponding .name file,
         // a copy of the long name file must be created first.
 
-        (string newShortEncryptedName, string newFullEncryptedName, IVirtualFile? newLongNameFile) = await targetCryptFsDirectory
-            .EnsureNameAsync(newName, cancellationToken)
-            .ConfigureAwait(false);
+        (string newShortEncryptedName, string newFullEncryptedName, IVirtualFile? newLongNameFile) =
+            await targetCryptFsDirectory.EnsureNameAsync(newName, cancellationToken).ConfigureAwait(false);
 
         // If the program halts here, and the new name is long, a dangling .name file is left.
 
