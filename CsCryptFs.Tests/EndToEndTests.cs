@@ -104,7 +104,7 @@ public class EndToEndTests
                 return true;
             if (x is null || y is null)
                 return false;
-            return (x with { LastAccessedTime = y.LastAccessedTime}).Equals(y);
+            return (x with { LastAccessedTime = y.LastAccessedTime }).Equals(y);
         }
 
         public int GetHashCode([DisallowNull] FileAttributes obj)
