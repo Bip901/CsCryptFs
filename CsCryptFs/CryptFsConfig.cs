@@ -60,6 +60,7 @@ public class CryptFsConfig
 
     /// <exception cref="InvalidDataException"></exception>
     /// <exception cref="JsonException"></exception>
+    /// <exception cref="NotSupportedException"></exception>
     public static CryptFsConfig DeserializeAndValidate(ReadOnlySpan<byte> utf8Json)
     {
         CryptFsConfig? config =
@@ -75,7 +76,8 @@ public class CryptFsConfig
             || !new HashSet<string>(config.FeatureFlags).SetEquals(new HashSet<string>(ExpectedFeatureFlags))
         )
         {
-            throw new InvalidDataException("Unexpected feature flags");
+            string featureFlagsString = config.FeatureFlags == null ? "null" : string.Join(", ", config.FeatureFlags);
+            throw new NotSupportedException($"Unsupported feature flags: [{featureFlagsString}]");
         }
         return config;
     }
