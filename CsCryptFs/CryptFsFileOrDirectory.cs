@@ -88,13 +88,19 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
         await TryDeleteLongNameFileAsync(originalLongNameFile, cancellationToken).ConfigureAwait(false);
     }
 
-    public Task<FileAttributes> GetAttributesAsync(CancellationToken cancellationToken)
+    /// <inheritdoc/>
+    public virtual Task<FileAttributes> GetAttributesAsync(CancellationToken cancellationToken)
     {
         return inner.GetAttributesAsync(cancellationToken);
     }
 
-    public Task SetAttributesAsync(FileAttributes attributes, CancellationToken cancellationToken)
+    /// <inheritdoc/>
+    public virtual Task SetAttributesAsync(FileAttributes attributes, CancellationToken cancellationToken)
     {
+        if (attributes.FileSize.HasValue)
+        {
+            throw new NotSupportedException("Truncating files via SetAttributes is currently not supported.");
+        }
         return inner.SetAttributesAsync(attributes, cancellationToken);
     }
 

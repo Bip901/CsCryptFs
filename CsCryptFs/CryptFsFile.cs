@@ -3,9 +3,13 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using FileAbstractions;
+using FileAttributes = FileAbstractions.FileAttributes;
 
 namespace CsCryptFs;
 
+/// <summary>
+/// A file backed by another <see cref="IVirtualFile"/> and encrypted/decrypted on-the-fly.
+/// </summary>
 public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadableWriteable
 {
     internal CryptFsFile(
@@ -17,6 +21,17 @@ public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadab
     )
         : base(config, inner, parent, longNameFile, fullEncryptedName) { }
 
+    /// <inheritdoc/>
+    public override async Task<FileAttributes> GetAttributesAsync(CancellationToken cancellationToken)
+    {
+        FileAttributes attributes = await inner.GetAttributesAsync(cancellationToken).ConfigureAwait(false);
+        return attributes with
+        {
+            FileSize = FileContentCrypto.GetPlaintextSize(attributes.FileSize.GetValueOrDefault()),
+        };
+    }
+
+    /// <inheritdoc/>
     public async Task<Stream> OpenReadAsync(FileMode fileMode, CancellationToken cancellationToken)
     {
         if (inner is not IReadable readable)

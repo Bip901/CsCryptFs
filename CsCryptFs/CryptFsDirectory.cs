@@ -232,7 +232,11 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
                 )
                 .ConfigureAwait(false);
             string decryptedFileName = Config.FileNameCrypto.Decrypt(fullEncryptedFileName, EMPTY_TWEAK);
-            yield return new FileEntry(decryptedFileName, fileEntry.Attributes);
+            FileAbstractions.FileAttributes adjustedAttributes = fileEntry.Attributes with
+            {
+                FileSize = FileContentCrypto.GetPlaintextSize(fileEntry.Attributes.FileSize.GetValueOrDefault()),
+            };
+            yield return new FileEntry(decryptedFileName, adjustedAttributes);
         }
     }
 
