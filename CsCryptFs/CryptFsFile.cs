@@ -27,7 +27,7 @@ public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadab
         FileAttributes attributes = await inner.GetAttributesAsync(cancellationToken).ConfigureAwait(false);
         return attributes with
         {
-            FileSize = FileContentSizeCrypto.GetPlaintextSize(attributes.FileSize.GetValueOrDefault()),
+            FileSize = (ulong)FileContentCrypto.GetPlaintextSize((long)attributes.FileSize.GetValueOrDefault()),
         };
     }
 
@@ -43,7 +43,7 @@ public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadab
             await EnsureLongNameFileExistsAsync(cancellationToken).ConfigureAwait(false);
         }
         Stream innerStream = await readable.OpenReadAsync(fileMode, cancellationToken).ConfigureAwait(false);
-        return new CryptFsStream(innerStream, Config.ContentKey, isReadOnly: true);
+        return new CryptFsStream(innerStream, Config.ContentKey);
     }
 
     /// <inheritdoc/>
@@ -53,29 +53,23 @@ public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadab
         {
             throw new InvalidOperationException("Inner file does not support writing");
         }
+        if (fileMode != FileMode.Truncate && fileMode != FileMode.Create && fileMode != FileMode.CreateNew)
+        {
+            // Truncate and similar modes are easier to implement because there is no need to pre-read the header - data is just overwritten completely
+            throw new NotSupportedException($"File mode {fileMode} is currently not supported for writes");
+        }
         if (fileMode == FileMode.OpenOrCreate || fileMode == FileMode.Append || fileMode == FileMode.CreateNew)
         {
             await EnsureLongNameFileExistsAsync(cancellationToken).ConfigureAwait(false);
         }
         Stream innerStream = await writable.OpenWriteAsync(fileMode, cancellationToken).ConfigureAwait(false);
-        return new CryptFsStream(innerStream, Config.ContentKey, isReadOnly: false);
+        return new CryptFsStream(innerStream, Config.ContentKey);
     }
 
     /// <inheritdoc/>
     public async Task<Stream> OpenReadWriteAsync(FileMode fileMode, CancellationToken cancellationToken)
     {
-        if (inner is not IReadableWriteable readableWriteable)
-        {
-            throw new InvalidOperationException("Inner file does not support read-write access");
-        }
-        if (fileMode == FileMode.OpenOrCreate || fileMode == FileMode.Append || fileMode == FileMode.CreateNew)
-        {
-            await EnsureLongNameFileExistsAsync(cancellationToken).ConfigureAwait(false);
-        }
-        Stream innerStream = await readableWriteable
-            .OpenReadWriteAsync(fileMode, cancellationToken)
-            .ConfigureAwait(false);
-        return new CryptFsStream(innerStream, Config.ContentKey, isReadOnly: false);
+        throw new NotSupportedException($"Read-write access is not currently supported");
     }
 
     private Task EnsureLongNameFileExistsAsync(CancellationToken cancellationToken)

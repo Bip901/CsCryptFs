@@ -234,7 +234,8 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
             string decryptedFileName = Config.FileNameCrypto.Decrypt(fullEncryptedFileName, EMPTY_TWEAK);
             FileAbstractions.FileAttributes adjustedAttributes = fileEntry.Attributes with
             {
-                FileSize = FileContentSizeCrypto.GetPlaintextSize(fileEntry.Attributes.FileSize.GetValueOrDefault()),
+                FileSize = (ulong)
+                    FileContentCrypto.GetPlaintextSize((long)fileEntry.Attributes.FileSize.GetValueOrDefault()),
             };
             yield return new FileEntry(decryptedFileName, adjustedAttributes);
         }
