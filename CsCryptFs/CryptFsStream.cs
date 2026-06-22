@@ -48,18 +48,10 @@ internal sealed class CryptFsStream : Stream
 
         if (header == null)
         {
-            if (innerStream.Position > FileHeader.TotalSize)
-            {
-                throw new InvalidOperationException("Seeked past the header but never read it, not supposed to happen");
-            }
             if (!await ReadHeaderAsync(cancellationToken).ConfigureAwait(false))
             {
                 return 0;
             }
-        }
-        if (innerStream.Position < FileHeader.TotalSize)
-        {
-            throw new InvalidOperationException("Read the header but didn't seek past it, not supposed to happen");
         }
 
         int readBufferPosition = (int)(plaintextPosition % FileContentCrypto.PlainBlockSize);
