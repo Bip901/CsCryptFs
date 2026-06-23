@@ -24,10 +24,14 @@ internal sealed class CryptFsStream : Stream
     }
 
     private long plaintextPosition;
+    private int CurrentBlockOffset => (int)(plaintextPosition % FileContentCrypto.PlainBlockSize);
+
     private readonly Stream innerStream;
     private readonly FileContentCrypto crypto;
     private readonly byte[] readBuffer;
     private int readBufferLength;
+    private readonly byte[] writeBuffer;
+    private int writeBufferLength;
 
     private FileHeader? header;
 
@@ -36,6 +40,7 @@ internal sealed class CryptFsStream : Stream
         this.innerStream = innerStream;
         crypto = new FileContentCrypto(contentKey);
         readBuffer = new byte[FileContentCrypto.PlainBlockSize];
+        writeBuffer = readBuffer; // Read-write mode is currently not supported, so an optimization is to avoid an extra allocation by having these point to the same buffer
     }
 
     /// <inheritdoc/>
@@ -54,8 +59,7 @@ internal sealed class CryptFsStream : Stream
             }
         }
 
-        int readBufferPosition = (int)(plaintextPosition % FileContentCrypto.PlainBlockSize);
-        if (readBufferPosition >= readBufferLength)
+        if (CurrentBlockOffset >= readBufferLength)
         {
             await ReadBlockAsync(cancellationToken).ConfigureAwait(false);
             if (readBufferLength == 0)
@@ -64,7 +68,7 @@ internal sealed class CryptFsStream : Stream
             }
         }
 
-        readBufferPosition = (int)(plaintextPosition % FileContentCrypto.PlainBlockSize);
+        int readBufferPosition = CurrentBlockOffset;
         int remainingInBuffer = readBufferLength - readBufferPosition;
         int bytesToCopy = Math.Min(remainingInBuffer, buffer.Length);
 
@@ -88,7 +92,36 @@ internal sealed class CryptFsStream : Stream
             throw new NotSupportedException();
         }
 
-        throw new NotImplementedException("TODO"); // TODO
+        if (buffer.Length == 0)
+        {
+            return;
+        }
+
+        if (header == null)
+        {
+            header = FileHeader.Generate();
+            using IMemoryOwner<byte> headerMemoryOwner = MemoryPool<byte>.Shared.Rent(FileHeader.TotalSize);
+            Memory<byte> headerMemory = headerMemoryOwner.Memory[..FileHeader.TotalSize];
+            header.Write(headerMemory.Span);
+            await innerStream.WriteAsync(headerMemory, cancellationToken).ConfigureAwait(false);
+        }
+
+        int offset = 0;
+        while (offset < buffer.Length)
+        {
+            int spaceInWriteBuffer = FileContentCrypto.PlainBlockSize - writeBufferLength;
+            int bytesToCopy = Math.Min(spaceInWriteBuffer, buffer.Length - offset);
+
+            buffer.Span.Slice(offset, bytesToCopy).CopyTo(writeBuffer.AsSpan(writeBufferLength));
+            offset += bytesToCopy;
+            plaintextPosition += bytesToCopy;
+            writeBufferLength += bytesToCopy;
+
+            if (spaceInWriteBuffer == bytesToCopy) // Filled the buffer
+            {
+                await FlushSelfAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
     }
 
     [MemberNotNullWhen(true, nameof(header))]
@@ -163,24 +196,53 @@ internal sealed class CryptFsStream : Stream
         return WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
     }
 
+    private async Task FlushSelfAsync(CancellationToken cancellationToken)
+    {
+        if (writeBufferLength <= 0 || header == null)
+        {
+            return;
+        }
+        long blockNumber = FileContentCrypto.PlainOffsetToBlockNumber(plaintextPosition - writeBufferLength);
+        using IMemoryOwner<byte> encryptedMemoryOwner = MemoryPool<byte>.Shared.Rent(FileContentCrypto.CipherBlockSize);
+        Memory<byte> encryptedMemory = encryptedMemoryOwner.Memory[..FileContentCrypto.CipherBlockSize];
+        int encryptedLength = crypto.EncryptBlock(
+            writeBuffer.AsSpan(0, writeBufferLength),
+            (ulong)blockNumber,
+            header.fileId,
+            encryptedMemory.Span
+        );
+        await innerStream.WriteAsync(encryptedMemory[..encryptedLength], cancellationToken).ConfigureAwait(false);
+        writeBufferLength = 0;
+    }
+
     /// <inheritdoc/>
-    public override void Flush() { }
+    public override void Flush()
+    {
+        // Only flush the inner stream, not the internal writeBuffer, to prevent block misalignment
+        innerStream.Flush();
+    }
+
+    /// <inheritdoc/>
+    public override Task FlushAsync(CancellationToken cancellationToken)
+    {
+        // Only flush the inner stream, not the internal writeBuffer, to prevent block misalignment
+        return innerStream.FlushAsync(cancellationToken);
+    }
 
     /// <inheritdoc/>
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            innerStream.Dispose();
+            DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
-        base.Dispose(disposing);
     }
 
     /// <inheritdoc/>
     public override async ValueTask DisposeAsync()
     {
+        await FlushSelfAsync(CancellationToken.None).ConfigureAwait(false);
         await innerStream.DisposeAsync().ConfigureAwait(false);
-        await base.DisposeAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc/>

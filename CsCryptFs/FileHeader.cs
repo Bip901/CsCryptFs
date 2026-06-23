@@ -23,4 +23,10 @@ internal class FileHeader(ushort version, byte[] fileId)
         byte[] fileId = header[sizeof(ushort)..].ToArray();
         return new FileHeader(version, fileId);
     }
+
+    public void Write(Span<byte> destination)
+    {
+        BinaryPrimitives.WriteUInt16BigEndian(destination, version);
+        fileId.CopyTo(destination[sizeof(ushort)..]);
+    }
 }

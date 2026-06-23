@@ -65,10 +65,7 @@ public class EndToEndTests
         Assert.Equal<ulong>(expectedExampleFileLength, exampleFileAttributes.FileSize.GetValueOrDefault());
 
         byte[] actualExampleFileBytes = await ReadAllBytesAsync(exampleFile, TestContext.Current.CancellationToken);
-        Assert.Equal(expectedExampleFileLength, actualExampleFileBytes.Length);
-        Assert.Equal(Enumerable.Repeat((byte)'A', 4096), actualExampleFileBytes.Take(4096));
-        Assert.Equal(Enumerable.Repeat((byte)0, 4096), actualExampleFileBytes.Skip(4096).Take(4096));
-        Assert.Equal(Enumerable.Repeat((byte)'C', 4096), actualExampleFileBytes.Skip(4096 * 2).Take(4096));
+        Assert.Equal(GetExampleFileContents(), actualExampleFileBytes);
 
         IVirtualFile longFile = cryptFs.GetChildFile(LONG_FILE_NAME);
         string actualLongFileText = await ReadAllTextAsync(longFile);
@@ -79,6 +76,39 @@ public class EndToEndTests
         );
         string actualInnerFileText = await ReadAllTextAsync(innerFile);
         Assert.Equal("This file is within a directory.\r\n", actualInnerFileText);
+    }
+
+    [Fact]
+    public async Task CreatingNewVolumeWorks()
+    {
+        CryptFsConfigWithKeys config = await CryptFsConfigWithKeys.CreateNewAsync("1234");
+        DirectoryInfo tempDir = Directory.CreateTempSubdirectory();
+        try
+        {
+            LocalDirectory tempDirAbstracted = new(tempDir.FullName);
+            CryptFsDirectory cryptFsDirectory = await CryptFsDirectory.CreateNewAsync(
+                tempDirAbstracted,
+                config,
+                TestContext.Current.CancellationToken
+            );
+            IVirtualFile exampleFile = cryptFsDirectory.GetChildFile(EXAMPLE_FILE_NAME);
+            byte[] expectedContent = GetExampleFileContents().ToArray();
+            await WriteAllBytesAsync(exampleFile, expectedContent, TestContext.Current.CancellationToken);
+            byte[] readBytes = await ReadAllBytesAsync(exampleFile, TestContext.Current.CancellationToken);
+            Assert.Equal(expectedContent, readBytes);
+        }
+        finally
+        {
+            tempDir.Delete(recursive: true);
+        }
+    }
+
+    private static IEnumerable<byte> GetExampleFileContents()
+    {
+        return Enumerable
+            .Repeat((byte)'A', 4096)
+            .Concat(Enumerable.Repeat((byte)0, 4096))
+            .Concat(Enumerable.Repeat((byte)'C', 4096));
     }
 
     private static Task<string> ReadAllTextAsync(IVirtualFile file)
@@ -94,6 +124,18 @@ public class EndToEndTests
         using MemoryStream memoryStream = new();
         await stream.CopyToAsync(memoryStream, cancellationToken);
         return memoryStream.ToArray();
+    }
+
+    private static async Task WriteAllBytesAsync(
+        IVirtualFile file,
+        ReadOnlyMemory<byte> memory,
+        CancellationToken cancellationToken
+    )
+    {
+        await using Stream stream = await ((IWritable)file)
+            .OpenWriteAsync(FileMode.Create, cancellationToken)
+            .ConfigureAwait(false);
+        await stream.WriteAsync(memory, cancellationToken);
     }
 
     class AccessTimeAgnosticFileAttributesComparer : IEqualityComparer<FileAttributes>

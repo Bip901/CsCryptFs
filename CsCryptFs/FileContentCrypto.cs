@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.Security.Cryptography;
 using Org.BouncyCastle.Crypto.Engines;
 using Org.BouncyCastle.Crypto.Modes;
 using Org.BouncyCastle.Crypto.Parameters;
@@ -124,6 +125,19 @@ internal class FileContentCrypto
             return CipherBlockSize;
         }
         return TransformBlock(false, blockNumber, fileId, iv.ToArray(), ciphertext[IvSize..], output);
+    }
+
+    /// <returns>The total encrypted length (IV + ciphertext + auth tag).</returns>
+    public int EncryptBlock(
+        ReadOnlySpan<byte> plaintext,
+        ulong blockNumber,
+        ReadOnlySpan<byte> fileId,
+        Span<byte> output
+    )
+    {
+        byte[] iv = RandomNumberGenerator.GetBytes(IvSize);
+        iv.CopyTo(output);
+        return IvSize + TransformBlock(true, blockNumber, fileId, iv, plaintext, output[IvSize..]);
     }
 
     /// <returns>The transformed length.</returns>
