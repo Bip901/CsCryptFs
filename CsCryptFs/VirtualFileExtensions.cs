@@ -23,7 +23,7 @@ public static class VirtualFileExtensions
     )
     {
         await using Stream stream = await readable.OpenReadAsync(fileMode, cancellationToken).ConfigureAwait(false);
-        using StreamReader streamReader = new(stream, Encoding.UTF8, leaveOpen: true);
+        using StreamReader streamReader = new(stream, leaveOpen: true);
         return await streamReader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -39,7 +39,7 @@ public static class VirtualFileExtensions
     )
     {
         await using Stream stream = await writable.OpenWriteAsync(fileMode, cancellationToken).ConfigureAwait(false);
-        using StreamWriter writer = new(stream, Encoding.UTF8, leaveOpen: true);
+        using StreamWriter writer = new(stream, leaveOpen: true);
         await writer.WriteAsync(text.AsMemory(), cancellationToken).ConfigureAwait(false);
     }
 }
