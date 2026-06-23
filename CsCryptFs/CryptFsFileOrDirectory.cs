@@ -7,8 +7,14 @@ using FileAttributes = FileAbstractions.FileAttributes;
 
 namespace CsCryptFs;
 
+/// <summary>
+/// The common ancestor of <see cref="CryptFsFile"/> and <see cref="CryptFsDirectory"/>.
+/// </summary>
 public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
 {
+    /// <summary>
+    /// The configuration of the cryptfs volume this file or directory belongs to.
+    /// </summary>
     public CryptFsConfigWithKeys Config { get; }
 
     protected readonly IVirtualFileOrDirectory inner;
@@ -31,6 +37,7 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
         this.fullEncryptedName = fullEncryptedName;
     }
 
+    /// <inheritdoc/>
     public Task RenameAsync(string newName, bool allowOverwrite, CancellationToken cancellationToken)
     {
         if (parent == null)
@@ -40,6 +47,7 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
         return MoveToAsync(parent, newName, allowOverwrite, cancellationToken);
     }
 
+    /// <inheritdoc/>
     public async Task MoveToAsync(
         IVirtualDirectory newParent,
         string newName,
@@ -78,6 +86,7 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
         }
     }
 
+    /// <inheritdoc/>
     public async Task DeleteAsync(CancellationToken cancellationToken)
     {
         // Deletion cannot be atomic because of .name files.
