@@ -58,7 +58,7 @@ public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadab
             // Truncate and similar modes are easier to implement because there is no need to pre-read the header - data is just overwritten completely
             throw new NotSupportedException($"File mode {fileMode} is currently not supported for writes");
         }
-        if (fileMode == FileMode.OpenOrCreate || fileMode == FileMode.Append || fileMode == FileMode.CreateNew)
+        if (fileMode != FileMode.Open && fileMode != FileMode.Truncate) // These modes require the file to exist anyway, so there is no need to ensure its name exists
         {
             await EnsureLongNameFileExistsAsync(cancellationToken).ConfigureAwait(false);
         }
