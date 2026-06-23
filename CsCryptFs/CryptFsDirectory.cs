@@ -210,7 +210,7 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
                 throw new InvalidOperationException($"File '{nameFileName}' is not writable");
             }
             await writable
-                .WriteAllTextAsync(FileMode.Create, fullEncryptedName, cancellationToken)
+                .WriteAllTextAsync(FileMode.OpenOrCreate, fullEncryptedName, cancellationToken)
                 .ConfigureAwait(false);
         }
         return (shortEncryptedName, fullEncryptedName, longNameFile);
@@ -256,7 +256,14 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
         {
             throw new InvalidOperationException($"File {nameFileName} is not readable!");
         }
-        return await readable.ReadAllTextAsync(FileMode.Open, cancellationToken).ConfigureAwait(false);
+        string fullEncryptedName = await readable
+            .ReadAllTextAsync(FileMode.Open, cancellationToken)
+            .ConfigureAwait(false);
+        if (fullEncryptedName.Length == 0)
+        {
+            throw new InvalidDataException($"File {nameFileName} is empty!");
+        }
+        return fullEncryptedName;
     }
 
     public IVirtualFileOrDirectory GetExistingChild(ReadOnlySpan<char> name)

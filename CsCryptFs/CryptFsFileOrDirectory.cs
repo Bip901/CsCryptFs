@@ -69,10 +69,13 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
 
         // If the program halts here, and the original name was long, a dangling .name file is left.
 
-        fullEncryptedName = newFullEncryptedName;
         IVirtualFile? originalLongNameFile = longNameFile;
         longNameFile = newLongNameFile;
-        await TryDeleteLongNameFileAsync(originalLongNameFile, cancellationToken).ConfigureAwait(false);
+        if (fullEncryptedName != newFullEncryptedName)
+        {
+            fullEncryptedName = newFullEncryptedName;
+            await TryDeleteLongNameFileAsync(originalLongNameFile, cancellationToken).ConfigureAwait(false);            
+        }
     }
 
     public async Task DeleteAsync(CancellationToken cancellationToken)
