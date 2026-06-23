@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -39,6 +40,6 @@ public static class VirtualFileExtensions
     {
         await using Stream stream = await writable.OpenWriteAsync(fileMode, cancellationToken).ConfigureAwait(false);
         using StreamWriter writer = new(stream, Encoding.UTF8, leaveOpen: true);
-        writer.Write(text);
+        await writer.WriteAsync(text.AsMemory(), cancellationToken).ConfigureAwait(false);
     }
 }
