@@ -14,6 +14,9 @@ public record CryptFsConfigWithKeys(
     FileNameCrypto FileNameCrypto
 )
 {
+    /// <summary>
+    /// Creates a new secure configuration with a key derived from the given password.
+    /// </summary>
     public static async Task<CryptFsConfigWithKeys> CreateNewAsync(string password)
     {
         CryptFsConfig.ScryptParams scryptParams = ScryptUtil.GenerateSecureParams();
@@ -21,9 +24,15 @@ public record CryptFsConfigWithKeys(
         return CreateNew(scryptParams, keyEncryptionKey);
     }
 
+    /// <summary>
+    /// Creates a new secure configuration with the given post-derivation key-encryption-key.
+    /// </summary>
     public static CryptFsConfigWithKeys CreateNew(byte[] keyEncryptionKey) =>
         CreateNew(ScryptUtil.GenerateSecureParams(), keyEncryptionKey);
 
+    /// <summary>
+    /// Creates a new <see cref="CryptFsConfigWithKeys"/> with the given scrypt configuration and post-derivation key-encryption-key.
+    /// </summary>
     public static CryptFsConfigWithKeys CreateNew(CryptFsConfig.ScryptParams scryptParams, byte[] keyEncryptionKey)
     {
         byte[] masterKey = RandomNumberGenerator.GetBytes(32);
@@ -38,12 +47,18 @@ public record CryptFsConfigWithKeys(
         return Load(config, keyEncryptionKey, masterKey);
     }
 
+    /// <summary>
+    /// Decrypts the given configuration with a key derived from the given password.
+    /// </summary>
     public static async Task<CryptFsConfigWithKeys> LoadAsync(CryptFsConfig config, string password)
     {
         byte[] keyEncryptionKey = await ScryptUtil.DeriveKeyAsync(password, config.ScryptObject).ConfigureAwait(false);
         return Load(config, keyEncryptionKey);
     }
 
+    /// <summary>
+    /// Decrypts the given configuration with the given key-encryption-key.
+    /// </summary>
     public static CryptFsConfigWithKeys Load(CryptFsConfig config, byte[] keyEncryptionKey)
     {
         byte[] masterKey = EncryptionKeysCrypto.DecryptKey(keyEncryptionKey, config.EncryptedKey);

@@ -17,9 +17,24 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
     /// </summary>
     public CryptFsConfigWithKeys Config { get; }
 
+    /// <summary>
+    /// The inner (plaintext) instance this is backed by.
+    /// </summary>
     protected readonly IVirtualFileOrDirectory inner;
+
+    /// <summary>
+    /// The parent ciphertext directory of this item, or null if and only if this is the cryptfs volume root.
+    /// </summary>
     protected readonly CryptFsDirectory? parent;
+
+    /// <summary>
+    /// The full-length (not hashed) encrypted name of this item, or null if and only if this is the cryptfs volume root.
+    /// </summary>
     protected string? fullEncryptedName;
+
+    /// <summary>
+    /// The plaintext .name file that contains the full encrypted name of this item, or null if this item's name is short enough.
+    /// </summary>
     protected IVirtualFile? longNameFile;
 
     internal CryptFsFileOrDirectory(
@@ -82,7 +97,7 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
         if (fullEncryptedName != newFullEncryptedName)
         {
             fullEncryptedName = newFullEncryptedName;
-            await TryDeleteLongNameFileAsync(originalLongNameFile, cancellationToken).ConfigureAwait(false);            
+            await TryDeleteLongNameFileAsync(originalLongNameFile, cancellationToken).ConfigureAwait(false);
         }
     }
 

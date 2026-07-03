@@ -117,6 +117,7 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
         return new CryptFsDirectory(configWithKeys, inner, null, null, null);
     }
 
+    /// <inheritdoc/>
     public IVirtualFile GetChildFile(ReadOnlySpan<char> name)
     {
         SanitizeName(name);
@@ -135,6 +136,7 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
         return new CryptFsFile(Config, newInner, this, longNameFile, fullEncryptedName);
     }
 
+    /// <inheritdoc/>
     public IVirtualDirectory GetChildDir(ReadOnlySpan<char> name)
     {
         SanitizeName(name);
@@ -153,6 +155,7 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
         return new CryptFsDirectory(Config, newInner, this, longNameFile, fullEncryptedName);
     }
 
+    /// <inheritdoc/>
     public Task<IVirtualDirectory> MakeDirAsync(
         ReadOnlySpan<char> name,
         FileAbstractions.FileAttributes attributes,
@@ -216,6 +219,7 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
         return (shortEncryptedName, fullEncryptedName, longNameFile);
     }
 
+    /// <inheritdoc/>
     public async IAsyncEnumerable<FileEntry> ListChildren([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await foreach (FileEntry fileEntry in ((IVirtualDirectory)inner).ListChildren(cancellationToken))
@@ -266,6 +270,7 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
         return fullEncryptedName;
     }
 
+    /// <inheritdoc/>
     public IVirtualFileOrDirectory GetExistingChild(ReadOnlySpan<char> name)
     {
         throw new NotSupportedException();

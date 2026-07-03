@@ -76,6 +76,7 @@ public class FileNameCrypto
     /// <param name="tweak">A directory-specific tweak (diriv) to apply.</param>
     /// <exception cref="ArgumentException"/>
     /// <exception cref="FormatException"/>
+    /// <exception cref="CryptographicException"/>
     public string Decrypt(string fileName, byte[] tweak)
     {
         if (fileName.EndsWith('='))
