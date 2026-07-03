@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -78,6 +79,13 @@ public class CryptFsConfig
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 
     /// <summary>
+    /// Defines what to do when encountering a file with an invalid name.
+    /// </summary>
+    /// <remarks>This property is only used by CsCryptFs and not serialized to disk.</remarks>
+    [JsonIgnore]
+    public FileNameDecryptFailBehavior DecryptFailBehavior { get; set; } = FileNameDecryptFailBehavior.Ignore;
+
+    /// <summary>
     /// Parameters for the scrypt key derivation function.
     /// </summary>
     public class ScryptParams : IEquatable<ScryptParams>
@@ -138,6 +146,22 @@ public class CryptFsConfig
         {
             return HashCode.Combine(N, R, P, KeyLen);
         }
+    }
+
+    /// <summary>
+    /// Defines what to do when encountering a file with an invalid name.
+    /// </summary>
+    public enum FileNameDecryptFailBehavior
+    {
+        /// <summary>
+        /// Treats the file/directory as non-existent.
+        /// </summary>
+        Ignore = 0,
+
+        /// <summary>
+        /// Raises the original cause (usually <see cref="CryptographicException"/> or <see cref="FormatException"/>).
+        /// </summary>
+        Raise = 1,
     }
 
     /// <exception cref="InvalidDataException"></exception>

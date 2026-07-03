@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using FileAbstractions;
@@ -229,12 +230,23 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
             {
                 continue;
             }
-            string fullEncryptedFileName = await GetFullEncryptedNameAsync(
-                    (IVirtualDirectory)inner,
-                    fileEntry.Name,
-                    cancellationToken
+            string fullEncryptedFileName;
+            try
+            {
+                fullEncryptedFileName = await GetFullEncryptedNameAsync(
+                        (IVirtualDirectory)inner,
+                        fileEntry.Name,
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+                when ((ex is CryptographicException || ex is FormatException)
+                    && Config.Config.DecryptFailBehavior == CryptFsConfig.FileNameDecryptFailBehavior.Ignore
                 )
-                .ConfigureAwait(false);
+            {
+                continue;
+            }
             string decryptedFileName = Config.FileNameCrypto.Decrypt(fullEncryptedFileName, EMPTY_TWEAK);
             FileAbstractions.FileAttributes adjustedAttributes = fileEntry.Attributes with
             {
