@@ -230,15 +230,16 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
             {
                 continue;
             }
-            string fullEncryptedFileName;
+            string decryptedFileName;
             try
             {
-                fullEncryptedFileName = await GetFullEncryptedNameAsync(
+                string fullEncryptedFileName = await GetFullEncryptedNameAsync(
                         (IVirtualDirectory)inner,
                         fileEntry.Name,
                         cancellationToken
                     )
                     .ConfigureAwait(false);
+                decryptedFileName = Config.FileNameCrypto.Decrypt(fullEncryptedFileName, EMPTY_TWEAK);
             }
             catch (Exception ex)
                 when ((ex is CryptographicException || ex is FormatException)
@@ -247,7 +248,6 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
             {
                 continue;
             }
-            string decryptedFileName = Config.FileNameCrypto.Decrypt(fullEncryptedFileName, EMPTY_TWEAK);
             FileAbstractions.FileAttributes adjustedAttributes = fileEntry.Attributes with
             {
                 FileSize = (ulong)
