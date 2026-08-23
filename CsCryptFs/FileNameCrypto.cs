@@ -74,7 +74,6 @@ public class FileNameCrypto
     /// </summary>
     /// <param name="fileName">An encrypted file name in unpadded base64 url form.</param>
     /// <param name="tweak">A directory-specific tweak (diriv) to apply.</param>
-    /// <exception cref="ArgumentException"/>
     /// <exception cref="FormatException"/>
     /// <exception cref="CryptographicException"/>
     public string Decrypt(string fileName, byte[] tweak)
@@ -82,7 +81,7 @@ public class FileNameCrypto
         if (fileName.EndsWith('='))
         {
             // We always assume the Raw64 configuration flag is set
-            throw new ArgumentException($"Padding is not allowed in filename '{fileName}'", nameof(fileName));
+            throw new FormatException($"Padding is not allowed in filename '{fileName}'");
         }
         byte[] ciphertext = Base64Url.DecodeFromChars(fileName);
         byte[] paddedPlaintext;

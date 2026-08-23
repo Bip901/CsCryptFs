@@ -231,6 +231,7 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
                 continue;
             }
             string decryptedFileName;
+            FileAbstractions.FileAttributes adjustedAttributes;
             try
             {
                 string fullEncryptedFileName = await GetFullEncryptedNameAsync(
@@ -240,19 +241,19 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
                     )
                     .ConfigureAwait(false);
                 decryptedFileName = Config.FileNameCrypto.Decrypt(fullEncryptedFileName, EMPTY_TWEAK);
+                adjustedAttributes = fileEntry.Attributes with
+                {
+                    FileSize = (ulong)
+                        FileContentCrypto.GetPlaintextSize((long)fileEntry.Attributes.FileSize.GetValueOrDefault()),
+                };
             }
             catch (Exception ex)
-                when ((ex is CryptographicException || ex is FormatException)
-                    && Config.Config.DecryptFailBehavior == CryptFsConfig.FileNameDecryptFailBehavior.Ignore
+                when ((ex is CryptographicException || ex is FormatException || ex is ArgumentException)
+                    && Config.Config.DecryptFailBehavior == CryptFsConfig.MetadataDecryptFailBehavior.Ignore
                 )
             {
                 continue;
             }
-            FileAbstractions.FileAttributes adjustedAttributes = fileEntry.Attributes with
-            {
-                FileSize = (ulong)
-                    FileContentCrypto.GetPlaintextSize((long)fileEntry.Attributes.FileSize.GetValueOrDefault()),
-            };
             yield return new FileEntry(decryptedFileName, adjustedAttributes);
         }
     }

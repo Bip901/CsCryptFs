@@ -79,11 +79,11 @@ public class CryptFsConfig
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 
     /// <summary>
-    /// Defines what to do when encountering a file with an invalid name.
+    /// Defines what to do when encountering a file with an invalid name or attributes.
     /// </summary>
     /// <remarks>This property is only used by CsCryptFs and not serialized to disk.</remarks>
     [JsonIgnore]
-    public FileNameDecryptFailBehavior DecryptFailBehavior { get; set; } = FileNameDecryptFailBehavior.Ignore;
+    public MetadataDecryptFailBehavior DecryptFailBehavior { get; set; } = MetadataDecryptFailBehavior.Ignore;
 
     /// <summary>
     /// Parameters for the scrypt key derivation function.
@@ -151,7 +151,7 @@ public class CryptFsConfig
     /// <summary>
     /// Defines what to do when encountering a file with an invalid name.
     /// </summary>
-    public enum FileNameDecryptFailBehavior
+    public enum MetadataDecryptFailBehavior
     {
         /// <summary>
         /// Treats the file/directory as non-existent.
