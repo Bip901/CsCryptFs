@@ -241,10 +241,12 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
                     )
                     .ConfigureAwait(false);
                 decryptedFileName = Config.FileNameCrypto.Decrypt(fullEncryptedFileName, EMPTY_TWEAK);
+                ulong? encryptedFileSize = fileEntry.Attributes.FileSize;
                 adjustedAttributes = fileEntry.Attributes with
                 {
-                    FileSize = (ulong)
-                        FileContentCrypto.GetPlaintextSize((long)fileEntry.Attributes.FileSize.GetValueOrDefault()),
+                    FileSize = fileEntry.Attributes.IsDirectory
+                        ? encryptedFileSize
+                        : (ulong)FileContentCrypto.GetPlaintextSize((long)encryptedFileSize.GetValueOrDefault()),
                 };
             }
             catch (Exception ex)
