@@ -14,45 +14,45 @@ namespace CsCryptFs.Tests;
 
 public class EndToEndTests
 {
-    const string REFERENCE_VOLUME_RELATIVE_PATH = "reference";
-    const string REFERENCE_VOLUME_PASSWORD = "1234";
-
-    const string LONG_FILE_NAME =
-        "Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long Long.txt";
-    const string SUBDIR_NAME = "Example Directory";
-    const string EXAMPLE_FILE_NAME = "Example.bin";
-    const string EMPTY_FILE_NAME = "Empty.txt";
-
     [Fact]
     public async Task ReferenceVolumeWorks()
     {
-        LocalDirectory referenceDir = new(Path.Combine(AppContext.BaseDirectory, REFERENCE_VOLUME_RELATIVE_PATH));
+        LocalDirectory referenceDir = ReferenceVolume.Get();
 
         CryptFsDirectory cryptFs = await CryptFsDirectory.OpenExistingAsync(
             referenceDir,
-            REFERENCE_VOLUME_PASSWORD,
+            ReferenceVolume.PASSWORD,
             cancellationToken: TestContext.Current.CancellationToken
         );
+        Assert.Equal(ReferenceVolume.ContentKey, cryptFs.Config.ContentKey);
 
         FileEntry[] fileEntries = await cryptFs
             .ListChildren(TestContext.Current.CancellationToken)
             .ToArrayAsync(TestContext.Current.CancellationToken);
         var fileNames = fileEntries.Select(entry => entry.Name).Order();
-        Assert.Equal(fileNames, [EMPTY_FILE_NAME, SUBDIR_NAME, EXAMPLE_FILE_NAME, LONG_FILE_NAME]);
+        Assert.Equal(
+            fileNames,
+            [
+                ReferenceVolume.EMPTY_FILE_NAME,
+                ReferenceVolume.SUBDIR_NAME,
+                ReferenceVolume.EXAMPLE_FILE_NAME,
+                ReferenceVolume.LONG_FILE_NAME,
+            ]
+        );
 
         await Assert.ThrowsAsync<DirectoryNotFoundException>(() =>
             cryptFs.GetChildDir("Non-Existent Directory").GetAttributesAsync(TestContext.Current.CancellationToken)
         );
         FileAttributes subdirAttributes = await cryptFs
-            .GetChildDir(SUBDIR_NAME)
+            .GetChildDir(ReferenceVolume.SUBDIR_NAME)
             .GetAttributesAsync(TestContext.Current.CancellationToken);
         Assert.True(subdirAttributes.IsDirectory);
 
-        IVirtualFile emptyFile = cryptFs.GetChildFile(EMPTY_FILE_NAME);
+        IVirtualFile emptyFile = cryptFs.GetChildFile(ReferenceVolume.EMPTY_FILE_NAME);
         string actualEmptyFileText = await ReadAllTextAsync(emptyFile);
         Assert.Equal(string.Empty, actualEmptyFileText);
 
-        IVirtualFile exampleFile = cryptFs.GetChildFile(EXAMPLE_FILE_NAME);
+        IVirtualFile exampleFile = cryptFs.GetChildFile(ReferenceVolume.EXAMPLE_FILE_NAME);
         const long expectedExampleFileLength = 4096 * 3;
         FileAttributes exampleFileAttributes = await exampleFile.GetAttributesAsync(
             TestContext.Current.CancellationToken
@@ -65,14 +65,14 @@ public class EndToEndTests
         Assert.Equal<ulong>(expectedExampleFileLength, exampleFileAttributes.FileSize.GetValueOrDefault());
 
         byte[] actualExampleFileBytes = await ReadAllBytesAsync(exampleFile, TestContext.Current.CancellationToken);
-        Assert.Equal(GetExampleFileContents(), actualExampleFileBytes);
+        Assert.Equal(ReferenceVolume.GetExampleFilePlaintext(), actualExampleFileBytes);
 
-        IVirtualFile longFile = cryptFs.GetChildFile(LONG_FILE_NAME);
+        IVirtualFile longFile = cryptFs.GetChildFile(ReferenceVolume.LONG_FILE_NAME);
         string actualLongFileText = await ReadAllTextAsync(longFile);
         Assert.Equal("This file has a very long name!", actualLongFileText);
 
         IVirtualFile innerFile = ((IVirtualDirectory)cryptFs).GetDescendantFile(
-            $"{SUBDIR_NAME}{PathParser.DIRECTORY_SEPARATOR_CHAR}Inner.txt"
+            $"{ReferenceVolume.SUBDIR_NAME}{PathParser.DIRECTORY_SEPARATOR_CHAR}Inner.txt"
         );
         string actualInnerFileText = await ReadAllTextAsync(innerFile);
         Assert.Equal("This file is within a directory.\r\n", actualInnerFileText);
@@ -91,8 +91,8 @@ public class EndToEndTests
                 config,
                 TestContext.Current.CancellationToken
             );
-            IVirtualFile exampleFile = cryptFsDirectory.GetChildFile(EXAMPLE_FILE_NAME);
-            byte[] expectedContent = GetExampleFileContents().ToArray();
+            IVirtualFile exampleFile = cryptFsDirectory.GetChildFile(ReferenceVolume.EXAMPLE_FILE_NAME);
+            byte[] expectedContent = ReferenceVolume.GetExampleFilePlaintext().ToArray();
             await WriteAllBytesAsync(exampleFile, expectedContent, TestContext.Current.CancellationToken);
             byte[] readBytes = await ReadAllBytesAsync(exampleFile, TestContext.Current.CancellationToken);
             Assert.Equal(expectedContent, readBytes);
@@ -101,14 +101,6 @@ public class EndToEndTests
         {
             tempDir.Delete(recursive: true);
         }
-    }
-
-    private static IEnumerable<byte> GetExampleFileContents()
-    {
-        return Enumerable
-            .Repeat((byte)'A', 4096)
-            .Concat(Enumerable.Repeat((byte)0, 4096))
-            .Concat(Enumerable.Repeat((byte)'C', 4096));
     }
 
     private static Task<string> ReadAllTextAsync(IVirtualFile file)
