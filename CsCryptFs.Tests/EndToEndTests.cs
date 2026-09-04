@@ -111,7 +111,7 @@ public class EndToEndTests
     private static async Task<byte[]> ReadAllBytesAsync(IVirtualFile file, CancellationToken cancellationToken)
     {
         await using Stream stream = await ((IReadable)file)
-            .OpenReadAsync(FileMode.Open, cancellationToken)
+            .OpenReadAsync(FileMode.Open, new StreamOptions() { SeekingDesired = false }, cancellationToken)
             .ConfigureAwait(false);
         using MemoryStream memoryStream = new();
         await stream.CopyToAsync(memoryStream, cancellationToken);
@@ -125,7 +125,7 @@ public class EndToEndTests
     )
     {
         await using Stream stream = await ((IWritable)file)
-            .OpenWriteAsync(FileMode.Create, cancellationToken)
+            .OpenWriteAsync(FileMode.Create, new StreamOptions() { SeekingDesired = false }, cancellationToken)
             .ConfigureAwait(false);
         await stream.WriteAsync(memory, cancellationToken);
     }

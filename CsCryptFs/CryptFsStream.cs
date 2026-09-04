@@ -7,16 +7,24 @@ using System.Threading.Tasks;
 
 namespace CsCryptFs;
 
+/// <summary>
+/// A read-only or write-only stream that converts a ciphertext stream into a plaintext stream.
+/// </summary>
 internal sealed class CryptFsStream : Stream
 {
-    public override bool CanRead => innerStream.CanRead;
+    /// <inheritdoc/>
+    public override bool CanRead => !write && innerStream.CanRead;
 
-    public override bool CanWrite => innerStream.CanWrite;
+    /// <inheritdoc/>
+    public override bool CanWrite => write && innerStream.CanWrite;
 
+    /// <inheritdoc/>
     public override bool CanSeek => false;
 
+    /// <inheritdoc/>
     public override long Length => FileContentCrypto.GetPlaintextSize(innerStream.Length);
 
+    /// <inheritdoc/>
     public override long Position
     {
         get => plaintextPosition;
@@ -32,12 +40,14 @@ internal sealed class CryptFsStream : Stream
     private int readBufferLength;
     private readonly byte[] writeBuffer;
     private int writeBufferLength;
+    private readonly bool write;
 
     private FileHeader? header;
 
     public CryptFsStream(Stream innerStream, byte[] contentKey)
     {
         this.innerStream = innerStream;
+        this.write = write;
         crypto = new FileContentCrypto(contentKey);
         readBuffer = new byte[FileContentCrypto.PlainBlockSize];
         writeBuffer = readBuffer; // Read-write mode is currently not supported, so an optimization is to avoid an extra allocation by having these point to the same buffer
@@ -46,6 +56,10 @@ internal sealed class CryptFsStream : Stream
     /// <inheritdoc/>
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken)
     {
+        if (!CanRead)
+        {
+            throw new NotSupportedException();
+        }
         if (buffer.Length == 0)
         {
             return 0;

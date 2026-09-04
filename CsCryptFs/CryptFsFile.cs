@@ -32,7 +32,11 @@ public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadab
     }
 
     /// <inheritdoc/>
-    public async Task<Stream> OpenReadAsync(FileMode fileMode, CancellationToken cancellationToken)
+    public async Task<Stream> OpenReadAsync(
+        FileMode fileMode,
+        StreamOptions options,
+        CancellationToken cancellationToken
+    )
     {
         if (inner is not IReadable readable)
         {
@@ -42,12 +46,16 @@ public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadab
         {
             await EnsureLongNameFileExistsAsync(cancellationToken).ConfigureAwait(false);
         }
-        Stream innerStream = await readable.OpenReadAsync(fileMode, cancellationToken).ConfigureAwait(false);
-        return new CryptFsStream(innerStream, Config.ContentKey);
+        Stream innerStream = await readable.OpenReadAsync(fileMode, options, cancellationToken).ConfigureAwait(false);
+        return new CryptFsStream(innerStream, Config.ContentKey, write: false);
     }
 
     /// <inheritdoc/>
-    public async Task<Stream> OpenWriteAsync(FileMode fileMode, CancellationToken cancellationToken)
+    public async Task<Stream> OpenWriteAsync(
+        FileMode fileMode,
+        StreamOptions options,
+        CancellationToken cancellationToken
+    )
     {
         if (inner is not IWritable writable)
         {
@@ -62,12 +70,16 @@ public class CryptFsFile : CryptFsFileOrDirectory, IReadableVirtualFile, IReadab
         {
             await EnsureLongNameFileExistsAsync(cancellationToken).ConfigureAwait(false);
         }
-        Stream innerStream = await writable.OpenWriteAsync(fileMode, cancellationToken).ConfigureAwait(false);
-        return new CryptFsStream(innerStream, Config.ContentKey);
+        Stream innerStream = await writable.OpenWriteAsync(fileMode, options, cancellationToken).ConfigureAwait(false);
+        return new CryptFsStream(innerStream, Config.ContentKey, write: true);
     }
 
     /// <inheritdoc/>
-    public async Task<Stream> OpenReadWriteAsync(FileMode fileMode, CancellationToken cancellationToken)
+    public async Task<Stream> OpenReadWriteAsync(
+        FileMode fileMode,
+        StreamOptions options,
+        CancellationToken cancellationToken
+    )
     {
         throw new NotSupportedException($"Read-write access is not currently supported");
     }

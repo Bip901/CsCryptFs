@@ -12,7 +12,7 @@ public class CryptFsStreamTests
         byte[] exampleFileCiphertext = ReferenceVolume.GetExampleFileCiphertext();
         using MemoryStream ciphertext = new(exampleFileCiphertext);
         using MemoryStream plaintext = new();
-        using CryptFsStream cryptFsStream = new(ciphertext, ReferenceVolume.ContentKey);
+        using CryptFsStream cryptFsStream = new(ciphertext, ReferenceVolume.ContentKey, write: false);
         await cryptFsStream.CopyToAsync(plaintext, TestContext.Current.CancellationToken);
 
         Assert.Equal(ReferenceVolume.GetExampleFilePlaintext(), plaintext.ToArray());

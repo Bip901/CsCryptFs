@@ -50,7 +50,7 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
             throw new InvalidOperationException("Refusing to initialize cryptfs in a non-empty directory");
         }
         await using Stream writeStream = await writable
-            .OpenWriteAsync(FileMode.CreateNew, cancellationToken)
+            .OpenWriteAsync(FileMode.CreateNew, new StreamOptions() { SeekingDesired = false }, cancellationToken)
             .ConfigureAwait(false);
         await writeStream.WriteAsync(config.Config.Serialize(), cancellationToken).ConfigureAwait(false);
         return new CryptFsDirectory(config, inner, null, null, null);
@@ -92,7 +92,7 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
         try
         {
             await using Stream readStream = await readable
-                .OpenReadAsync(FileMode.OpenOrCreate, cancellationToken)
+                .OpenReadAsync(FileMode.OpenOrCreate, new StreamOptions() { SeekingDesired = false }, cancellationToken)
                 .ConfigureAwait(false);
             using MemoryStream memoryStream = new();
             await readStream.CopyToAsync(memoryStream, cancellationToken).ConfigureAwait(false);
