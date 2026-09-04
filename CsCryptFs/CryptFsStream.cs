@@ -4,13 +4,14 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using FileAbstractions.Streams;
 
 namespace CsCryptFs;
 
 /// <summary>
 /// A read-only or write-only stream that converts a ciphertext stream into a plaintext stream.
 /// </summary>
-internal sealed class CryptFsStream : Stream
+public sealed class CryptFsStream : Stream, IConcurrentReadableStream
 {
     /// <inheritdoc/>
     public override bool CanRead => !write && innerStream.CanRead;
@@ -34,6 +35,8 @@ internal sealed class CryptFsStream : Stream
     private long plaintextPosition;
     private int CurrentBlockOffset => (int)(plaintextPosition % FileContentCrypto.PlainBlockSize);
 
+    private readonly IConcurrentReadableStream? innerConcurrentStream;
+    private readonly SemaphoreSlim concurrencySemaphore;
     private readonly Stream innerStream;
     private readonly FileContentCrypto crypto;
     private readonly byte[] readBuffer;
@@ -44,10 +47,24 @@ internal sealed class CryptFsStream : Stream
 
     private FileHeader? header;
 
-    public CryptFsStream(Stream innerStream, byte[] contentKey)
+    /// <summary>
+    /// Creates a new <see cref="CryptFsStream"/> over the given ciphertext stream.
+    /// </summary>
+    /// <remarks>
+    /// If <paramref name="innerStream"/> implements <see cref="IConcurrentReadableStream"/>, it will be used
+    /// to implement <see cref="ReadAtAsync"/>. Otherwise, a lock-and-seek method will be used, which requires
+    /// the inner stream to support seeking.
+    /// <para>This stream does not support seeking.</para>
+    /// </remarks>
+    /// <param name="innerStream">The ciphertext stream. <see cref="CryptFsStream"/> only buffers the minimum necessary amount (1 ciphertext block, which is 4128 bytes); Callers may wish to wrap this in a <see cref="BufferedStream"/>.</param>
+    /// <param name="contentKey">The secret key to use to encrypt/decrypt the content.</param>
+    /// <param name="write">Whether to behave in write-only mode (true) or read-only mode (false).</param>
+    public CryptFsStream(Stream innerStream, byte[] contentKey, bool write)
     {
         this.innerStream = innerStream;
         this.write = write;
+        innerConcurrentStream = innerStream as IConcurrentReadableStream;
+        concurrencySemaphore = new SemaphoreSlim(1, 1);
         crypto = new FileContentCrypto(contentKey);
         readBuffer = new byte[FileContentCrypto.PlainBlockSize];
         writeBuffer = readBuffer; // Read-write mode is currently not supported, so an optimization is to avoid an extra allocation by having these point to the same buffer
@@ -165,22 +182,20 @@ internal sealed class CryptFsStream : Stream
         // Read a full ciphertext block (or a partial one if reaching the end of the stream)
         using IMemoryOwner<byte> readMemoryOwner = MemoryPool<byte>.Shared.Rent(FileContentCrypto.CipherBlockSize);
         Memory<byte> readMemory = readMemoryOwner.Memory[..FileContentCrypto.CipherBlockSize];
-        int totalRead = 0;
-        while (totalRead < readMemory.Length)
-        {
-            int read = await innerStream.ReadAsync(readMemory[totalRead..], cancellationToken).ConfigureAwait(false);
-            if (read == 0)
-            {
-                break;
-            }
-            totalRead += read;
-        }
-        if (totalRead == 0) // File length is an exact multiple of the cipher block size
+        int read = await innerStream
+            .ReadAtLeastAsync(
+                readMemory,
+                readMemory.Length,
+                throwOnEndOfStream: false,
+                cancellationToken: cancellationToken
+            )
+            .ConfigureAwait(false);
+        if (read == 0) // File length is an exact multiple of the cipher block size
         {
             readBufferLength = 0;
             return;
         }
-        readMemory = readMemory[..totalRead];
+        readMemory = readMemory[..read];
 
         long currentBlockNumber = FileContentCrypto.PlainOffsetToBlockNumber(plaintextPosition);
         readBufferLength = crypto.DecryptBlock(readMemory.Span, (ulong)currentBlockNumber, header!.fileId, readBuffer);
@@ -196,6 +211,109 @@ internal sealed class CryptFsStream : Stream
     public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
         return ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<int> ReadAtAsync(
+        long offset,
+        Memory<byte> buffer,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+
+        // Ensure the header is read
+        await concurrencySemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (header == null && !await ReadHeaderAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return 0;
+            }
+        }
+        finally
+        {
+            concurrencySemaphore.Release();
+        }
+
+        long blockNumber = FileContentCrypto.PlainOffsetToBlockNumber(offset);
+        int offsetWithinBlock = (int)(offset - (blockNumber * FileContentCrypto.PlainBlockSize));
+        long blockStartCipherOffset = FileContentCrypto.BlockNumberToCipherOffset(blockNumber);
+
+        using IMemoryOwner<byte> readMemoryOwner = MemoryPool<byte>.Shared.Rent(FileContentCrypto.CipherBlockSize);
+        Memory<byte> readMemory = readMemoryOwner.Memory[..FileContentCrypto.CipherBlockSize];
+        int read = await Inner_ReadAt_AtLeast_Async(
+                blockStartCipherOffset,
+                readMemory,
+                readMemory.Length,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+        if (read == 0)
+        {
+            return 0;
+        }
+        using IMemoryOwner<byte> plaintextMemoryOwner = MemoryPool<byte>.Shared.Rent(FileContentCrypto.PlainBlockSize);
+        Memory<byte> plainMemory = plaintextMemoryOwner.Memory[..FileContentCrypto.PlainBlockSize];
+        int plaintextBlockLength = crypto.DecryptBlock(
+            readMemory.Span[..read],
+            (ulong)blockNumber,
+            header!.fileId,
+            plainMemory.Span
+        );
+        if (plaintextBlockLength <= offsetWithinBlock)
+        {
+            return 0;
+        }
+        Memory<byte> slicedPlaintext = plainMemory.Slice(
+            offsetWithinBlock,
+            Math.Min(buffer.Length, plaintextBlockLength - offsetWithinBlock)
+        );
+        slicedPlaintext.CopyTo(buffer);
+        return slicedPlaintext.Length;
+    }
+
+    private async Task<int> Inner_ReadAt_AtLeast_Async(
+        long offset,
+        Memory<byte> buffer,
+        int minimumBytes,
+        CancellationToken cancellationToken
+    )
+    {
+        if (innerConcurrentStream == null)
+        {
+            await concurrencySemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                innerStream.Seek(offset, SeekOrigin.Begin);
+                return await innerStream
+                    .ReadAtLeastAsync(
+                        buffer,
+                        minimumBytes,
+                        throwOnEndOfStream: false,
+                        cancellationToken: cancellationToken
+                    )
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                concurrencySemaphore.Release();
+            }
+        }
+        int totalRead = 0;
+        while (totalRead < minimumBytes)
+        {
+            int bytesRead = await innerConcurrentStream
+                .ReadAtAsync(offset + totalRead, buffer[totalRead..], cancellationToken)
+                .ConfigureAwait(false);
+            if (bytesRead == 0)
+            {
+                // End of stream
+                break;
+            }
+            totalRead += bytesRead;
+        }
+        return totalRead;
     }
 
     /// <inheritdoc/>
@@ -257,6 +375,7 @@ internal sealed class CryptFsStream : Stream
     {
         await FlushSelfAsync(CancellationToken.None).ConfigureAwait(false);
         await innerStream.DisposeAsync().ConfigureAwait(false);
+        concurrencySemaphore.Dispose();
     }
 
     /// <inheritdoc/>
