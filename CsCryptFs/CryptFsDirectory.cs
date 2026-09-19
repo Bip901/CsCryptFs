@@ -92,7 +92,7 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
         try
         {
             await using Stream readStream = await readable
-                .OpenReadAsync(FileMode.OpenOrCreate, new StreamOptions() { SeekingDesired = false }, cancellationToken)
+                .OpenReadAsync(FileMode.Open, new StreamOptions() { SeekingDesired = false }, cancellationToken)
                 .ConfigureAwait(false);
             using MemoryStream memoryStream = new();
             await readStream.CopyToAsync(memoryStream, cancellationToken).ConfigureAwait(false);
