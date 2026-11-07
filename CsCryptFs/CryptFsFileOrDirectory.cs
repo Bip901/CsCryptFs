@@ -130,6 +130,12 @@ public class CryptFsFileOrDirectory : IVirtualFileOrDirectory
         return inner.SetAttributesAsync(attributes, cancellationToken);
     }
 
+    /// <inheritdoc/>
+    public Task<FileSystemAttributes> GetFileSystemAttributesAsync(CancellationToken cancellationToken)
+    {
+        return inner.GetFileSystemAttributesAsync(cancellationToken);
+    }
+
     private static Task TryDeleteLongNameFileAsync(IVirtualFile? longNameFile, CancellationToken cancellationToken)
     {
         if (longNameFile == null)

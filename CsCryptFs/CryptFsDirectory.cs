@@ -118,8 +118,9 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
         return new CryptFsDirectory(configWithKeys, inner, null, null, null);
     }
 
-    /// <inheritdoc/>
-    public IVirtualFile GetChildFile(ReadOnlySpan<char> name)
+    private (IVirtualFile? longNameFile, string shortEncryptedName, string fullEncryptedName) EncryptName(
+        ReadOnlySpan<char> name
+    )
     {
         SanitizeName(name);
         (string shortEncryptedName, string fullEncryptedName) = Config.FileNameCrypto.Encrypt(
@@ -127,33 +128,38 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
             EMPTY_TWEAK,
             Config.Config.LongNameMax
         );
-        IVirtualDirectory innerDir = (IVirtualDirectory)inner;
-        IVirtualFile newInner = innerDir.GetChildFile(shortEncryptedName);
         IVirtualFile? longNameFile = null;
         if (shortEncryptedName != fullEncryptedName)
         {
-            longNameFile = innerDir.GetChildFile(shortEncryptedName + FileNameCrypto.LONGNAME_NAME_FILE_SUFFIX);
+            longNameFile = ((IVirtualDirectory)inner).GetChildFile(
+                shortEncryptedName + FileNameCrypto.LONGNAME_NAME_FILE_SUFFIX
+            );
         }
+        return (longNameFile, shortEncryptedName, fullEncryptedName);
+    }
+
+    /// <inheritdoc/>
+    public IVirtualFile GetChildFile(ReadOnlySpan<char> name)
+    {
+        (IVirtualFile? longNameFile, string shortEncryptedName, string fullEncryptedName) = EncryptName(name);
+        IVirtualFile newInner = ((IVirtualDirectory)inner).GetChildFile(shortEncryptedName);
         return new CryptFsFile(Config, newInner, this, longNameFile, fullEncryptedName);
     }
 
     /// <inheritdoc/>
     public IVirtualDirectory GetChildDir(ReadOnlySpan<char> name)
     {
-        SanitizeName(name);
-        (string shortEncryptedName, string fullEncryptedName) = Config.FileNameCrypto.Encrypt(
-            name.ToString(),
-            EMPTY_TWEAK,
-            Config.Config.LongNameMax
-        );
-        IVirtualDirectory innerDir = (IVirtualDirectory)inner;
-        IVirtualDirectory newInner = innerDir.GetChildDir(shortEncryptedName);
-        IVirtualFile? longNameFile = null;
-        if (shortEncryptedName != fullEncryptedName)
-        {
-            longNameFile = innerDir.GetChildFile(shortEncryptedName + FileNameCrypto.LONGNAME_NAME_FILE_SUFFIX);
-        }
+        (IVirtualFile? longNameFile, string shortEncryptedName, string fullEncryptedName) = EncryptName(name);
+        IVirtualDirectory newInner = ((IVirtualDirectory)inner).GetChildDir(shortEncryptedName);
         return new CryptFsDirectory(Config, newInner, this, longNameFile, fullEncryptedName);
+    }
+
+    /// <inheritdoc/>
+    public IVirtualFileOrDirectory GetChild(ReadOnlySpan<char> name)
+    {
+        (IVirtualFile? longNameFile, string shortEncryptedName, string fullEncryptedName) = EncryptName(name);
+        IVirtualFileOrDirectory newInner = ((IVirtualDirectory)inner).GetChild(shortEncryptedName);
+        return new CryptFsFileOrDirectory(Config, newInner, this, longNameFile, fullEncryptedName);
     }
 
     /// <inheritdoc/>
@@ -283,11 +289,5 @@ public class CryptFsDirectory : CryptFsFileOrDirectory, IVirtualDirectory
             throw new InvalidDataException($"File {nameFileName} is empty!");
         }
         return fullEncryptedName;
-    }
-
-    /// <inheritdoc/>
-    public IVirtualFileOrDirectory GetExistingChild(ReadOnlySpan<char> name)
-    {
-        throw new NotSupportedException();
     }
 }
